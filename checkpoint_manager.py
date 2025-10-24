@@ -1,0 +1,178 @@
+from typing import Any
+import sqlite3
+import pickle
+
+T = Any
+
+
+class CheckpointManager:
+    """
+    Abstracts checkpoint saving/loading for Snapper.
+    This class can be extended to support different backends (file, database, etc).
+    """
+
+    def save_checkpoint(self, last_index: int, processed: list[T]) -> None:
+        """
+        Save checkpoint state.
+        Args:
+            last_index: The last processed index.
+            processed: The list of processed items to save.
+        """
+        raise NotImplementedError
+
+    def load_checkpoint(self) -> list[T]:
+        """
+        Load checkpoint state.
+        Returns:
+            A list of processed items.
+        """
+        raise NotImplementedError
+
+    def load_last_index(self) -> int:
+        """
+        Load only the last processed index, without loading the full processed results.
+        Returns:
+            The last processed index, or -1 if not available.
+        """
+        raise NotImplementedError
+
+
+class SqlLiteCheckpointManager(CheckpointManager):
+    def __init__(self, db_path: str = "snapper_checkpoint.db"):
+        """
+        Initialize the SQLite checkpoint manager.
+
+        Args:
+            db_path: Path to the SQLite database file.
+        """
+        self.db_path = db_path
+        self._initialize_database()
+
+    def _initialize_database(self) -> None:
+        """Create tables if they do not exist."""
+        with sqlite3.connect(self.db_path) as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                CREATE TABLE IF NOT EXISTS checkpoints (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    last_index INTEGER NOT NULL
+                )
+                """
+            )
+            cursor.execute(
+                """
+                CREATE TABLE IF NOT EXISTS processed_outputs (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    result BLOB NOT NULL
+                )
+                """
+            )
+            conn.commit()
+
+    def save_checkpoint(self, last_index: int, processed: list[T]) -> None:
+        """
+        Save the last processed index and append results to the database.
+
+        Args:
+            last_index: The last processed index.
+            processed: The list of processed items to save.
+        """
+        with sqlite3.connect(self.db_path) as conn:
+            cursor = conn.cursor()
+            # Update the last index
+            cursor.execute("DELETE FROM checkpoints")
+            cursor.execute(
+                "INSERT INTO checkpoints (last_index) VALUES (?)", (last_index,)
+            )
+
+            # Append processed results
+            cursor.executemany(
+                "INSERT INTO processed_outputs (result) VALUES (?)",
+                [(item,) for item in processed],
+            )
+            conn.commit()
+
+    def load_checkpoint(self) -> list[T]:
+        """
+        Load all processed results from the database.
+
+        Returns:
+            A list of processed items.
+        """
+        with sqlite3.connect(self.db_path) as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT result FROM processed_outputs")
+            rows = cursor.fetchall()
+            return [row[0] for row in rows]
+
+    def load_last_index(self) -> int:
+        """
+        Load the last processed index from the database.
+
+        Returns:
+            The last processed index, or -1 if not available.
+        """
+        with sqlite3.connect(self.db_path) as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                "SELECT last_index FROM checkpoints ORDER BY id DESC LIMIT 1"
+            )
+            row = cursor.fetchone()
+            return row[0] if row else -1
+
+
+class PickleCheckpointManager(CheckpointManager):
+    def __init__(self, file_path: str = "snapper_checkpoint.pkl"):
+        """
+        Initialize the Pickle checkpoint manager.
+
+        Args:
+            file_path: Path to the pickle file.
+        """
+        self.file_path = file_path
+
+    def save_checkpoint(self, last_index: int, processed: list[T]) -> None:
+        """
+        Save the last processed index and all processed results to a pickle file.
+        This method ensures that existing processed items are loaded and appended before saving.
+
+        Args:
+            last_index: The last processed index.
+            processed: The list of processed items to save.
+        """
+        # Load existing processed items
+        existing_processed = self.load_checkpoint()
+        combined_processed = existing_processed + processed
+
+        # Save the combined data
+        with open(self.file_path, "wb") as f:
+            pickle.dump({"last_index": last_index, "processed": combined_processed}, f)
+
+    def load_checkpoint(self) -> list[T]:
+        """
+        Load all processed results from the pickle file.
+
+        Returns:
+            A list of processed items.
+        """
+        try:
+            with open(self.file_path, "rb") as f:
+                data = pickle.load(f)
+                return data.get("processed", [])
+        except FileNotFoundError:
+            return []
+
+    def load_last_index(self) -> int:
+        """
+        Load the last processed index from the pickle file.
+
+        Returns:
+            The last processed index, or -1 if not available.
+        """
+        try:
+            with open(self.file_path, "rb") as f:
+                data = pickle.load(f)
+                return data.get("last_index", -1)
+        except FileNotFoundError:
+            return -1

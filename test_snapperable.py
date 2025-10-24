@@ -3,6 +3,12 @@ import pytest
 import tempfile
 from snapperable import Snapper
 
+from checkpoint_manager import CheckpointManager, PickleCheckpointManager
+
+from pathlib import Path
+
+from typing import TypeVar
+
 
 @pytest.fixture
 def checkpoint_dir():
@@ -14,13 +20,15 @@ class SimulatedInterrupt(Exception):
     pass
 
 
-def test_snapper_resume_after_interrupt(checkpoint_dir):
+def test_snapper_resume_after_interrupt(checkpoint_dir: Path):
     data = list(range(10))
     processed = []
     interrupt_at = 5
     first_run = {"done": False}
 
-    def process(item):
+    T = TypeVar("T")
+
+    def process(item: T) -> T:
         processed.append(item)
         # Only raise on the first run
         if item == interrupt_at and not first_run["done"]:
@@ -29,14 +37,15 @@ def test_snapper_resume_after_interrupt(checkpoint_dir):
         return item * 2
 
     checkpoint_path = os.path.join(checkpoint_dir, "test_snapperable.chkpt")
-    snapper = Snapper(data, process, checkpoint_path=checkpoint_path)
+    checkpoint_manager = PickleCheckpointManager(checkpoint_path)
+    snapper = Snapper(data, process, checkpoint_manager=checkpoint_manager)
     # Simulate interruption
     with pytest.raises(SimulatedInterrupt):
         snapper.start()
 
     # Now resume
     processed.clear()
-    snapper = Snapper(data, process, checkpoint_path=checkpoint_path)
+    snapper = Snapper(data, process, checkpoint_manager=checkpoint_manager)
     snapper.start()
     result = snapper.load()
 

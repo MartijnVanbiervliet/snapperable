@@ -1,20 +1,21 @@
-from typing import Iterable, Callable, Any, Optional
-import pickle
+from typing import Iterable, Callable, Any, Optional, TypeVar, Generic
+from checkpoint_manager import CheckpointManager, SqlLiteCheckpointManager
 
 
-class Snapper:
+T = TypeVar("T")
+
+
+class Snapper(Generic[T]):
     """
     Snapper processes an iterable with a user-defined function, saving intermediate snapshots to disk.
     This allows resuming long-running processes without losing progress.
     """
 
-    T = Any
-
     def __init__(
         self,
         iterable: Iterable[T],
-        fn: Callable[[Any], Any],
-        checkpoint_path: Optional[str] = None,
+        fn: Callable[[T], Any],
+        checkpoint_manager: Optional[CheckpointManager] = None,
     ):
         """
         Initialize the Snapper.
@@ -22,37 +23,26 @@ class Snapper:
         Args:
             iterable: The iterable to process.
             fn: The function to apply to each item in the iterable.
-            checkpoint_path: Optional path to save checkpoints. If not provided, a default will be used.
+            checkpoint_manager: Optional CheckpointManager instance. If not provided, raises error.
         """
         self.iterable = iterable
         self.fn = fn
-        self.checkpoint_path = checkpoint_path or "snapperable.chkpt"
+        if checkpoint_manager is None:
+            checkpoint_manager = SqlLiteCheckpointManager()
+        self.checkpoint_manager = checkpoint_manager
 
-    def _load_checkpoint(self) -> tuple[int, list[Any]]:
+    def _save_checkpoint(self, last_index: int, processed: list[T]) -> None:
         """
-        Load checkpoint from file. Returns (last_index, processed).
+        Save checkpoint using the checkpoint manager.
         """
-        try:
-            with open(self.checkpoint_path, "rb") as f:
-                checkpoint = pickle.load(f)
-                last_index = checkpoint.get("last_index", -1)
-                processed = checkpoint.get("processed", [])
-                return last_index, processed
-        except (FileNotFoundError, EOFError, pickle.UnpicklingError):
-            return -1, []
-
-    def _save_checkpoint(self, last_index: int, processed: list[Any]) -> None:
-        """
-        Save checkpoint to file.
-        """
-        with open(self.checkpoint_path, "wb") as f:
-            pickle.dump({"last_index": last_index, "processed": processed}, f)
+        self.checkpoint_manager.save_checkpoint(last_index, processed=processed)
 
     def start(self) -> None:
         """
         Start processing the iterable, saving progress to disk.
         """
-        last_index, processed = self._load_checkpoint()
+        last_index = self.checkpoint_manager.load_last_index()
+        processed: list[T] = []
 
         # Process from last_index + 1
         for idx, item in enumerate(self.iterable):
@@ -66,13 +56,8 @@ class Snapper:
 
     def load(self) -> list[T]:
         """
-        Load the processed results from the checkpoint file.
+        Load the processed results from the checkpoint manager.
         Returns:
             The list of processed results, or an empty list if no checkpoint exists.
         """
-        try:
-            with open(self.checkpoint_path, "rb") as f:
-                checkpoint = pickle.load(f)
-                return checkpoint.get("processed", [])
-        except (FileNotFoundError, EOFError, pickle.UnpicklingError):
-            return []
+        return self.checkpoint_manager.load_checkpoint()
