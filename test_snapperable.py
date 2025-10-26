@@ -3,7 +3,7 @@ import pytest
 import tempfile
 from snapperable import Snapper
 
-from checkpoint_manager import CheckpointManager, PickleCheckpointManager
+from snapshot_storage import SnapshotStorage, PickleSnapshotStorage
 
 from pathlib import Path
 
@@ -37,15 +37,15 @@ def test_snapper_resume_after_interrupt(checkpoint_dir: Path):
         return item * 2
 
     checkpoint_path = os.path.join(checkpoint_dir, "test_snapperable.chkpt")
-    checkpoint_manager = PickleCheckpointManager(checkpoint_path)
-    snapper = Snapper(data, process, checkpoint_manager=checkpoint_manager)
+    checkpoint_manager = PickleSnapshotStorage(checkpoint_path)
+    snapper = Snapper(data, process, snapshot_storage=checkpoint_manager)
     # Simulate interruption
     with pytest.raises(SimulatedInterrupt):
         snapper.start()
 
     # Now resume
     processed.clear()
-    snapper = Snapper(data, process, checkpoint_manager=checkpoint_manager)
+    snapper = Snapper(data, process, snapshot_storage=checkpoint_manager)
     snapper.start()
     result = snapper.load()
 

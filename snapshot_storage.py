@@ -1,28 +1,28 @@
-from typing import Any
 import sqlite3
 import pickle
+from typing import TypeVar, Generic
 
-T = Any
+T = TypeVar("T")
 
 
-class CheckpointManager:
+class SnapshotStorage(Generic[T]):
     """
     Abstracts checkpoint saving/loading for Snapper.
     This class can be extended to support different backends (file, database, etc).
     """
 
-    def save_checkpoint(self, last_index: int, processed: list[T]) -> None:
+    def store_snapshot(self, last_index: int, processed: list[T]) -> None:
         """
-        Save checkpoint state.
+        Save snapshot to storage.
         Args:
             last_index: The last processed index.
             processed: The list of processed items to save.
         """
         raise NotImplementedError
 
-    def load_checkpoint(self) -> list[T]:
+    def load_snapshot(self) -> list[T]:
         """
-        Load checkpoint state.
+        Load snapshot state.
         Returns:
             A list of processed items.
         """
@@ -37,7 +37,7 @@ class CheckpointManager:
         raise NotImplementedError
 
 
-class SqlLiteCheckpointManager(CheckpointManager):
+class SqlLiteSnapshotStorage(SnapshotStorage[T]):
     def __init__(self, db_path: str = "snapper_checkpoint.db"):
         """
         Initialize the SQLite checkpoint manager.
@@ -70,7 +70,7 @@ class SqlLiteCheckpointManager(CheckpointManager):
             )
             conn.commit()
 
-    def save_checkpoint(self, last_index: int, processed: list[T]) -> None:
+    def store_snapshot(self, last_index: int, processed: list[T]) -> None:
         """
         Save the last processed index and append results to the database.
 
@@ -93,7 +93,7 @@ class SqlLiteCheckpointManager(CheckpointManager):
             )
             conn.commit()
 
-    def load_checkpoint(self) -> list[T]:
+    def load_snapshot(self) -> list[T]:
         """
         Load all processed results from the database.
 
@@ -122,17 +122,17 @@ class SqlLiteCheckpointManager(CheckpointManager):
             return row[0] if row else -1
 
 
-class PickleCheckpointManager(CheckpointManager):
+class PickleSnapshotStorage(SnapshotStorage[T]):
     def __init__(self, file_path: str = "snapper_checkpoint.pkl"):
         """
-        Initialize the Pickle checkpoint manager.
+        Initialize the Pickle snapshot storage.
 
         Args:
             file_path: Path to the pickle file.
         """
         self.file_path = file_path
 
-    def save_checkpoint(self, last_index: int, processed: list[T]) -> None:
+    def store_snapshot(self, last_index: int, processed: list[T]) -> None:
         """
         Save the last processed index and all processed results to a pickle file.
         This method ensures that existing processed items are loaded and appended before saving.
@@ -142,14 +142,14 @@ class PickleCheckpointManager(CheckpointManager):
             processed: The list of processed items to save.
         """
         # Load existing processed items
-        existing_processed = self.load_checkpoint()
+        existing_processed = self.load_snapshot()
         combined_processed = existing_processed + processed
 
         # Save the combined data
         with open(self.file_path, "wb") as f:
             pickle.dump({"last_index": last_index, "processed": combined_processed}, f)
 
-    def load_checkpoint(self) -> list[T]:
+    def load_snapshot(self) -> list[T]:
         """
         Load all processed results from the pickle file.
 
