@@ -2,3 +2,5 @@ __pycache__
 .vscode
 **.egg-info
 **/build/lib
+**/.pytest_cache
+.venv
