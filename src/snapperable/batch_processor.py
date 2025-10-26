@@ -1,7 +1,7 @@
 from typing import Any, List
 import threading
 
-from snapshot_storage import SnapshotStorage
+from snapperable.snapshot_storage import SnapshotStorage
 
 
 class BatchProcessor:

@@ -24,11 +24,20 @@ def process_item(item):
 snapper = Snapper(range(1000), process_item)
 snapper.start()
 
-# To resume later:
+# To resume processing later
+snapper.start()
+
+# To load results after processing
 results = snapper.load()
 ```
 
 ## Development
+
+### Editable installation
+
+```bash
+uv pip install -e .
+```
 
 ### Running Tests
 
