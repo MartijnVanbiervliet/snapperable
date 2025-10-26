@@ -2,6 +2,7 @@ import sqlite3
 import pickle
 from typing import TypeVar, Generic
 import os
+from snapperable.logger import logger
 
 T = TypeVar("T")
 
@@ -78,7 +79,7 @@ class SqlLiteSnapshotStorage(SnapshotStorage[T]):
         Reset the database by reinitializing the schema.
         This is used when the database file is corrupted.
         """
-        print("Warning: Database file is corrupted. Resetting the database.")
+        logger.warning("Database file is corrupted. Resetting the database.")
         self._initialize_database()
 
     def store_snapshot(self, last_index: int, processed: list[T]) -> None:
@@ -122,7 +123,7 @@ class SqlLiteSnapshotStorage(SnapshotStorage[T]):
                     try:
                         processed_items.append(pickle.loads(row[0]))
                     except (pickle.UnpicklingError, EOFError):
-                        print("Warning: Corrupted data encountered and skipped.")
+                        logger.warning("Corrupted data encountered and skipped.")
         except sqlite3.DatabaseError:
             self._reset_database()
         return processed_items
@@ -186,7 +187,7 @@ class PickleSnapshotStorage(SnapshotStorage[T]):
                 data = pickle.load(f)
                 return data.get("processed", [])
         except (FileNotFoundError, pickle.UnpicklingError, EOFError):
-            print(f"Warning: Pickle file '{self.file_path}' is corrupted or missing.")
+            logger.warning(f"Pickle file '{self.file_path}' is corrupted or missing.")
             return []
 
     def load_last_index(self) -> int:
@@ -201,5 +202,5 @@ class PickleSnapshotStorage(SnapshotStorage[T]):
                 data = pickle.load(f)
                 return data.get("last_index", -1)
         except (FileNotFoundError, pickle.UnpicklingError, EOFError):
-            print(f"Warning: Pickle file '{self.file_path}' is corrupted or missing.")
+            logger.warning(f"Pickle file '{self.file_path}' is corrupted or missing.")
             return -1
