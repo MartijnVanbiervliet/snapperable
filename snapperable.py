@@ -52,6 +52,7 @@ class Snapper(Generic[T]):
             processed.append(result)
             # Save checkpoint after each item
             self._save_checkpoint(idx, processed)
+            processed = []
             last_index = idx
 
     def load(self) -> list[T]:
