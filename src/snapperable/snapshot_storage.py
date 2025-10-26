@@ -1,28 +1,30 @@
-from typing import Any
 import sqlite3
 import pickle
+from typing import TypeVar, Generic
+import os
+from snapperable.logger import logger
 
-T = Any
+T = TypeVar("T")
 
 
-class CheckpointManager:
+class SnapshotStorage(Generic[T]):
     """
     Abstracts checkpoint saving/loading for Snapper.
     This class can be extended to support different backends (file, database, etc).
     """
 
-    def save_checkpoint(self, last_index: int, processed: list[T]) -> None:
+    def store_snapshot(self, last_index: int, processed: list[T]) -> None:
         """
-        Save checkpoint state.
+        Save snapshot to storage.
         Args:
             last_index: The last processed index.
             processed: The list of processed items to save.
         """
         raise NotImplementedError
 
-    def load_checkpoint(self) -> list[T]:
+    def load_snapshot(self) -> list[T]:
         """
-        Load checkpoint state.
+        Load snapshot state.
         Returns:
             A list of processed items.
         """
@@ -37,7 +39,7 @@ class CheckpointManager:
         raise NotImplementedError
 
 
-class SqlLiteCheckpointManager(CheckpointManager):
+class SqlLiteSnapshotStorage(SnapshotStorage[T]):
     def __init__(self, db_path: str = "snapper_checkpoint.db"):
         """
         Initialize the SQLite checkpoint manager.
@@ -50,6 +52,8 @@ class SqlLiteCheckpointManager(CheckpointManager):
 
     def _initialize_database(self) -> None:
         """Create tables if they do not exist."""
+        if os.path.exists(self.db_path):
+            os.remove(self.db_path)
         with sqlite3.connect(self.db_path) as conn:
             cursor = conn.cursor()
             cursor.execute(
@@ -70,9 +74,17 @@ class SqlLiteCheckpointManager(CheckpointManager):
             )
             conn.commit()
 
-    def save_checkpoint(self, last_index: int, processed: list[T]) -> None:
+    def _reset_database(self):
         """
-        Save the last processed index and append results to the database.
+        Reset the database by reinitializing the schema.
+        This is used when the database file is corrupted.
+        """
+        logger.warning("Database file is corrupted. Resetting the database.")
+        self._initialize_database()
+
+    def store_snapshot(self, last_index: int, processed: list[T]) -> None:
+        """
+        Save the last processed index and append serialized results to the database.
 
         Args:
             last_index: The last processed index.
@@ -86,25 +98,35 @@ class SqlLiteCheckpointManager(CheckpointManager):
                 "INSERT INTO checkpoints (last_index) VALUES (?)", (last_index,)
             )
 
-            # Append processed results
+            # Serialize and append processed results
+            serialized_data = [(pickle.dumps(item),) for item in processed]
             cursor.executemany(
                 "INSERT INTO processed_outputs (result) VALUES (?)",
-                [(item,) for item in processed],
+                serialized_data,
             )
             conn.commit()
 
-    def load_checkpoint(self) -> list[T]:
+    def load_snapshot(self) -> list[T]:
         """
-        Load all processed results from the database.
+        Load all processed results from the database and deserialize them.
 
         Returns:
             A list of processed items.
         """
-        with sqlite3.connect(self.db_path) as conn:
-            cursor = conn.cursor()
-            cursor.execute("SELECT result FROM processed_outputs")
-            rows = cursor.fetchall()
-            return [row[0] for row in rows]
+        processed_items = []
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                cursor = conn.cursor()
+                cursor.execute("SELECT result FROM processed_outputs")
+                rows = cursor.fetchall()
+                for row in rows:
+                    try:
+                        processed_items.append(pickle.loads(row[0]))
+                    except (pickle.UnpicklingError, EOFError):
+                        logger.warning("Corrupted data encountered and skipped.")
+        except sqlite3.DatabaseError:
+            self._reset_database()
+        return processed_items
 
     def load_last_index(self) -> int:
         """
@@ -113,26 +135,30 @@ class SqlLiteCheckpointManager(CheckpointManager):
         Returns:
             The last processed index, or -1 if not available.
         """
-        with sqlite3.connect(self.db_path) as conn:
-            cursor = conn.cursor()
-            cursor.execute(
-                "SELECT last_index FROM checkpoints ORDER BY id DESC LIMIT 1"
-            )
-            row = cursor.fetchone()
-            return row[0] if row else -1
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                cursor = conn.cursor()
+                cursor.execute(
+                    "SELECT last_index FROM checkpoints ORDER BY id DESC LIMIT 1"
+                )
+                row = cursor.fetchone()
+                return row[0] if row else -1
+        except sqlite3.DatabaseError:
+            self._reset_database()
+            return -1
 
 
-class PickleCheckpointManager(CheckpointManager):
+class PickleSnapshotStorage(SnapshotStorage[T]):
     def __init__(self, file_path: str = "snapper_checkpoint.pkl"):
         """
-        Initialize the Pickle checkpoint manager.
+        Initialize the Pickle snapshot storage.
 
         Args:
             file_path: Path to the pickle file.
         """
         self.file_path = file_path
 
-    def save_checkpoint(self, last_index: int, processed: list[T]) -> None:
+    def store_snapshot(self, last_index: int, processed: list[T]) -> None:
         """
         Save the last processed index and all processed results to a pickle file.
         This method ensures that existing processed items are loaded and appended before saving.
@@ -142,14 +168,14 @@ class PickleCheckpointManager(CheckpointManager):
             processed: The list of processed items to save.
         """
         # Load existing processed items
-        existing_processed = self.load_checkpoint()
+        existing_processed = self.load_snapshot()
         combined_processed = existing_processed + processed
 
         # Save the combined data
         with open(self.file_path, "wb") as f:
             pickle.dump({"last_index": last_index, "processed": combined_processed}, f)
 
-    def load_checkpoint(self) -> list[T]:
+    def load_snapshot(self) -> list[T]:
         """
         Load all processed results from the pickle file.
 
@@ -160,7 +186,8 @@ class PickleCheckpointManager(CheckpointManager):
             with open(self.file_path, "rb") as f:
                 data = pickle.load(f)
                 return data.get("processed", [])
-        except FileNotFoundError:
+        except (FileNotFoundError, pickle.UnpicklingError, EOFError):
+            logger.warning(f"Pickle file '{self.file_path}' is corrupted or missing.")
             return []
 
     def load_last_index(self) -> int:
@@ -174,5 +201,6 @@ class PickleCheckpointManager(CheckpointManager):
             with open(self.file_path, "rb") as f:
                 data = pickle.load(f)
                 return data.get("last_index", -1)
-        except FileNotFoundError:
+        except (FileNotFoundError, pickle.UnpicklingError, EOFError):
+            logger.warning(f"Pickle file '{self.file_path}' is corrupted or missing.")
             return -1
