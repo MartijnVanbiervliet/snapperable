@@ -30,26 +30,6 @@ class BatchProcessor:
         self.timer = None
         self.lock = threading.Lock()
 
-    def _is_wait_time_exceeded(self) -> bool:
-        """
-        Check if the maximum wait time has been exceeded.
-
-        Returns:
-            True if the wait time has been exceeded, False otherwise.
-        """
-        if self.max_wait_time is None:
-            return False
-        return self.timer is not None and not self.timer.is_alive()
-
-    def _is_batch_full(self) -> bool:
-        """
-        Check if the current batch is full.
-
-        Returns:
-            True if the batch size has been reached, False otherwise.
-        """
-        return len(self.current_batch) >= self.batch_size
-
     def add_item(self, item: Any) -> None:
         """
         Add an item to the batch. If the batch size is reached, process the batch.
@@ -84,6 +64,26 @@ class BatchProcessor:
         if batch_to_store:
             last_index = self.storage_backend.load_last_index() + len(batch_to_store)
             self.storage_backend.store_snapshot(last_index, batch_to_store)
+
+    def _is_wait_time_exceeded(self) -> bool:
+        """
+        Check if the maximum wait time has been exceeded.
+
+        Returns:
+            True if the wait time has been exceeded, False otherwise.
+        """
+        if self.max_wait_time is None:
+            return False
+        return self.timer is not None and not self.timer.is_alive()
+
+    def _is_batch_full(self) -> bool:
+        """
+        Check if the current batch is full.
+
+        Returns:
+            True if the batch size has been reached, False otherwise.
+        """
+        return len(self.current_batch) >= self.batch_size
 
     def start_timer(self) -> None:
         """
