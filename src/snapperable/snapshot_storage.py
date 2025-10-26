@@ -1,6 +1,7 @@
 import sqlite3
 import pickle
 from typing import TypeVar, Generic
+import os
 
 T = TypeVar("T")
 
@@ -50,6 +51,8 @@ class SqlLiteSnapshotStorage(SnapshotStorage[T]):
 
     def _initialize_database(self) -> None:
         """Create tables if they do not exist."""
+        if os.path.exists(self.db_path):
+            os.remove(self.db_path)
         with sqlite3.connect(self.db_path) as conn:
             cursor = conn.cursor()
             cursor.execute(
@@ -70,9 +73,17 @@ class SqlLiteSnapshotStorage(SnapshotStorage[T]):
             )
             conn.commit()
 
+    def _reset_database(self):
+        """
+        Reset the database by reinitializing the schema.
+        This is used when the database file is corrupted.
+        """
+        print("Warning: Database file is corrupted. Resetting the database.")
+        self._initialize_database()
+
     def store_snapshot(self, last_index: int, processed: list[T]) -> None:
         """
-        Save the last processed index and append results to the database.
+        Save the last processed index and append serialized results to the database.
 
         Args:
             last_index: The last processed index.
@@ -86,25 +97,35 @@ class SqlLiteSnapshotStorage(SnapshotStorage[T]):
                 "INSERT INTO checkpoints (last_index) VALUES (?)", (last_index,)
             )
 
-            # Append processed results
+            # Serialize and append processed results
+            serialized_data = [(pickle.dumps(item),) for item in processed]
             cursor.executemany(
                 "INSERT INTO processed_outputs (result) VALUES (?)",
-                [(item,) for item in processed],
+                serialized_data,
             )
             conn.commit()
 
     def load_snapshot(self) -> list[T]:
         """
-        Load all processed results from the database.
+        Load all processed results from the database and deserialize them.
 
         Returns:
             A list of processed items.
         """
-        with sqlite3.connect(self.db_path) as conn:
-            cursor = conn.cursor()
-            cursor.execute("SELECT result FROM processed_outputs")
-            rows = cursor.fetchall()
-            return [row[0] for row in rows]
+        processed_items = []
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                cursor = conn.cursor()
+                cursor.execute("SELECT result FROM processed_outputs")
+                rows = cursor.fetchall()
+                for row in rows:
+                    try:
+                        processed_items.append(pickle.loads(row[0]))
+                    except (pickle.UnpicklingError, EOFError):
+                        print("Warning: Corrupted data encountered and skipped.")
+        except sqlite3.DatabaseError:
+            self._reset_database()
+        return processed_items
 
     def load_last_index(self) -> int:
         """
@@ -113,13 +134,17 @@ class SqlLiteSnapshotStorage(SnapshotStorage[T]):
         Returns:
             The last processed index, or -1 if not available.
         """
-        with sqlite3.connect(self.db_path) as conn:
-            cursor = conn.cursor()
-            cursor.execute(
-                "SELECT last_index FROM checkpoints ORDER BY id DESC LIMIT 1"
-            )
-            row = cursor.fetchone()
-            return row[0] if row else -1
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                cursor = conn.cursor()
+                cursor.execute(
+                    "SELECT last_index FROM checkpoints ORDER BY id DESC LIMIT 1"
+                )
+                row = cursor.fetchone()
+                return row[0] if row else -1
+        except sqlite3.DatabaseError:
+            self._reset_database()
+            return -1
 
 
 class PickleSnapshotStorage(SnapshotStorage[T]):
