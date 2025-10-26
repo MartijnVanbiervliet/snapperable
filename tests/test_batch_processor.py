@@ -64,6 +64,7 @@ def test_different_batch_sizes(mock_snapshot_storage):
     # Large batch size
     processor_large.add_item("item1")
     processor_large.add_item("item2")
+    mock_snapshot_storage.store_snapshot.assert_called_once()
     processor_large.add_item("item3")
     processor_large.add_item("item4")
     processor_large.add_item("item5")
@@ -77,7 +78,9 @@ def test_wait_time_functionality(mock_snapshot_storage):
     processor = BatchProcessor(storage_backend=mock_snapshot_storage, batch_size=10, max_wait_time=1)
 
     processor.add_item("item1")
+    assert mock_snapshot_storage.store_snapshot.call_count == 0
     time.sleep(1.5)  # Wait for the batch to be processed due to timeout
+    processor.add_item("item2")
 
     mock_snapshot_storage.store_snapshot.assert_called_once()
     assert len(processor.current_batch) == 0

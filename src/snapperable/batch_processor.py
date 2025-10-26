@@ -1,5 +1,6 @@
 from typing import Any, List
 import threading
+import time
 
 from snapperable.snapshot_storage import SnapshotStorage
 from snapperable.logger import logger
@@ -28,8 +29,8 @@ class BatchProcessor:
         self.batch_size = batch_size
         self.max_wait_time = max_wait_time
         self.current_batch: List[Any] = []
-        self.timer = None
         self.lock = threading.Lock()
+        self.last_add_time = 0  # Initialize the last_add_time to 0
 
     def add_item(self, item: Any) -> None:
         """
@@ -44,22 +45,23 @@ class BatchProcessor:
         with self.lock:
             self.current_batch.append(item)
             logger.debug("Current batch size: %d", len(self.current_batch))
+
+            if self._is_wait_time_exceeded():
+                logger.info("Wait time exceeded. Triggering flush.")
+                should_flush = True
+
             if self._is_batch_full():
                 logger.info("Batch is full. Triggering flush.")
                 should_flush = True
-            elif self._is_wait_time_exceeded():
-                logger.info("Wait time exceeded. Triggering flush.")
-                should_flush = True
-            elif self.timer is None:
-                logger.debug("Starting timer for batch processing.")
-                self.start_timer()
 
         if should_flush:
             self.flush()
 
+        self.last_add_time = time.time()
+
     def flush(self) -> None:
         """
-        Flush the current batch by storing it using the storage backend. Clears the batch and stops the timer.
+        Flush the current batch by storing it using the storage backend. Clears the batch.
         """
         logger.info("Flushing current batch.")
         batch_to_store = None
@@ -67,7 +69,6 @@ class BatchProcessor:
             if self.current_batch:
                 batch_to_store = self.current_batch
                 self.current_batch = []
-                self.stop_timer()
                 logger.debug("Batch cleared after flush.")
 
         if batch_to_store:
@@ -85,7 +86,10 @@ class BatchProcessor:
         """
         if self.max_wait_time is None:
             return False
-        return self.timer is not None and not self.timer.is_alive()
+
+        # Check if the last item addition was beyond the max wait time threshold
+        current_time = time.time()
+        return (current_time - self.last_add_time) > self.max_wait_time
 
     def _is_batch_full(self) -> bool:
         """
@@ -95,16 +99,3 @@ class BatchProcessor:
             True if the batch size has been reached, False otherwise.
         """
         return len(self.current_batch) >= self.batch_size
-
-    def start_timer(self) -> None:
-        logger.debug(
-            "Starting a new timer with max wait time: %s seconds.", self.max_wait_time
-        )
-        self.timer = threading.Timer(self.max_wait_time, self.flush)
-        self.timer.start()
-
-    def stop_timer(self) -> None:
-        logger.debug("Stopping the timer.")
-        if self.timer:
-            self.timer.cancel()
-            self.timer = None
