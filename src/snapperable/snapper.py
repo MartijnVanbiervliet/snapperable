@@ -1,6 +1,6 @@
 from typing import Iterable, Callable, Any, Optional, TypeVar, Generic
-from snapshot_storage import SnapshotStorage, SqlLiteSnapshotStorage
-from batch_processor import BatchProcessor
+from snapperable.snapshot_storage import SnapshotStorage, SqlLiteSnapshotStorage
+from snapperable.batch_processor import BatchProcessor
 
 T = TypeVar("T")
 

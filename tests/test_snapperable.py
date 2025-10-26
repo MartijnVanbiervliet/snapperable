@@ -2,8 +2,7 @@ import os
 import pytest
 import tempfile
 from snapperable import Snapper
-
-from snapshot_storage import PickleSnapshotStorage
+from snapperable.snapshot_storage import PickleSnapshotStorage
 
 from pathlib import Path
 
