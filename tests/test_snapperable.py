@@ -7,17 +7,11 @@ from snapperable.snapshot_storage import PickleSnapshotStorage
 from pathlib import Path
 
 
-@pytest.fixture
-def checkpoint_dir():
-    with tempfile.TemporaryDirectory() as tmpdir:
-        yield tmpdir
-
-
 class SimulatedInterrupt(Exception):
     pass
 
 
-def test_snapper_resume_after_interrupt(checkpoint_dir: Path):
+def test_snapper_resume_after_interrupt(tmp_path: Path):
     data = list(range(10))
     processed: list[int] = []
     interrupt_at = 5
@@ -31,7 +25,7 @@ def test_snapper_resume_after_interrupt(checkpoint_dir: Path):
             raise SimulatedInterrupt()
         return item * 2
 
-    snapshot_storage_path = os.path.join(checkpoint_dir, "test_snapperable.chkpt")
+    snapshot_storage_path = os.path.join(tmp_path, "test_snapperable.chkpt")
     snapshot_storage = PickleSnapshotStorage[int](snapshot_storage_path)
     snapper = Snapper(data, process, snapshot_storage=snapshot_storage)
     # Simulate interruption

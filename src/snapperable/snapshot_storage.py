@@ -160,7 +160,8 @@ class PickleSnapshotStorage(SnapshotStorage[T]):
             with open(self.file_path, "rb") as f:
                 data = pickle.load(f)
                 return data.get("processed", [])
-        except FileNotFoundError:
+        except (FileNotFoundError, pickle.UnpicklingError, EOFError):
+            print(f"Warning: Pickle file '{self.file_path}' is corrupted or missing.")
             return []
 
     def load_last_index(self) -> int:
@@ -174,5 +175,6 @@ class PickleSnapshotStorage(SnapshotStorage[T]):
             with open(self.file_path, "rb") as f:
                 data = pickle.load(f)
                 return data.get("last_index", -1)
-        except FileNotFoundError:
+        except (FileNotFoundError, pickle.UnpicklingError, EOFError):
+            print(f"Warning: Pickle file '{self.file_path}' is corrupted or missing.")
             return -1
