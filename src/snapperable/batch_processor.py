@@ -29,8 +29,8 @@ class BatchProcessor:
         self.batch_size = batch_size
         self.max_wait_time = max_wait_time
         self.current_batch: List[Any] = []
-        self.lock = threading.Lock()
-        self.last_add_time = 0  # Initialize the last_add_time to 0
+        # self.lock = threading.Lock()
+        self.last_add_time = None
 
     def add_item(self, item: Any) -> None:
         """
@@ -42,17 +42,16 @@ class BatchProcessor:
         """
         logger.debug("Adding item to batch: %s", item)
         should_flush = False
-        with self.lock:
-            self.current_batch.append(item)
-            logger.debug("Current batch size: %d", len(self.current_batch))
+        self.current_batch.append(item)
+        logger.debug("Current batch size: %d", len(self.current_batch))
 
-            if self._is_wait_time_exceeded():
-                logger.info("Wait time exceeded. Triggering flush.")
-                should_flush = True
+        if self._is_wait_time_exceeded():
+            logger.info("Wait time exceeded. Triggering flush.")
+            should_flush = True
 
-            if self._is_batch_full():
-                logger.info("Batch is full. Triggering flush.")
-                should_flush = True
+        if self._is_batch_full():
+            logger.info("Batch is full. Triggering flush.")
+            should_flush = True
 
         if should_flush:
             self.flush()
@@ -65,11 +64,10 @@ class BatchProcessor:
         """
         logger.info("Flushing current batch.")
         batch_to_store = None
-        with self.lock:
-            if self.current_batch:
-                batch_to_store = self.current_batch
-                self.current_batch = []
-                logger.debug("Batch cleared after flush.")
+        if self.current_batch:
+            batch_to_store = self.current_batch
+            self.current_batch = []
+            logger.debug("Batch cleared after flush.")
 
         if batch_to_store:
             logger.info("Storing batch of size %d.", len(batch_to_store))
@@ -85,6 +83,9 @@ class BatchProcessor:
             True if the wait time has been exceeded, False otherwise.
         """
         if self.max_wait_time is None:
+            return False
+
+        if self.last_add_time is None:
             return False
 
         # Check if the last item addition was beyond the max wait time threshold
