@@ -26,7 +26,7 @@ def test_snapper_resume_after_interrupt(tmp_path: Path):
 
     snapshot_storage_path = os.path.join(tmp_path, "test_snapperable.chkpt")
     snapshot_storage = PickleSnapshotStorage[int](snapshot_storage_path)
-    
+
     # First run - will be interrupted
     with Snapper(data, process, snapshot_storage=snapshot_storage) as snapper:
         # Simulate interruption
@@ -45,13 +45,14 @@ def test_snapper_resume_after_interrupt(tmp_path: Path):
         assert all(i in processed or i == interrupt_at for i in data)
 
 
-def test_snapper_prevents_shared_storage():
+def test_snapper_prevents_shared_storage(tmp_path: Path):
     """
     Test that Snapper prevents multiple instances from sharing the same storage.
     This protects against race conditions in multithreaded scenarios.
     """
     # Define a shared storage backend
-    shared_storage = SqlLiteSnapshotStorage[int]()
+    snapshot_storage_path = tmp_path / "test_shared_storage.db"
+    shared_storage = SqlLiteSnapshotStorage[int](snapshot_storage_path)
 
     # Define a simple processing function
     def process_item(item: int) -> int:
@@ -68,17 +69,20 @@ def test_snapper_prevents_shared_storage():
         _snapper2 = Snapper(iterable, process_item, snapshot_storage=shared_storage)
 
 
-@pytest.mark.xfail(reason="True multithreading support with shared storage not implemented yet")
-def test_snapper_multithreading_with_shared_storage():
+@pytest.mark.xfail(
+    reason="True multithreading support with shared storage not implemented yet"
+)
+def test_snapper_multithreading_with_shared_storage(tmp_path: Path):
     """
     Test Snapper's behavior when executed with multiple threads on the same storage.
     Future implementation should allow multiple threads to coordinate work using shared storage
     with proper locking and work distribution.
     """
     import threading
-    
+
     # Define a shared storage backend
-    shared_storage = SqlLiteSnapshotStorage[int]()
+    snapshot_storage_path = tmp_path / "test_multithreading.db"
+    shared_storage = SqlLiteSnapshotStorage[int](snapshot_storage_path)
 
     # Define a simple processing function
     def process_item(item: int) -> int:

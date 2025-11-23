@@ -1,3 +1,4 @@
+from pathlib import Path
 import sqlite3
 import pickle
 from typing import TypeVar, Generic
@@ -40,7 +41,7 @@ class SnapshotStorage(Generic[T]):
 
 
 class SqlLiteSnapshotStorage(SnapshotStorage[T]):
-    def __init__(self, db_path: str = "snapper_checkpoint.db"):
+    def __init__(self, db_path: Path | str = "snapper_checkpoint.db"):
         """
         Initialize the SQLite checkpoint manager.
 
