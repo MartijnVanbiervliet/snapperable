@@ -39,6 +39,17 @@ class SnapshotStorage(Generic[T]):
         """
         raise NotImplementedError
 
+    def get_storage_identifier(self) -> str:
+        """
+        Get a unique identifier for this storage backend.
+        This is used to prevent multiple Snapper instances from using storage
+        that points to the same underlying file/database.
+        
+        Returns:
+            A unique string identifier for this storage (typically the absolute file path).
+        """
+        raise NotImplementedError
+
 
 class SqlLiteSnapshotStorage(SnapshotStorage[T]):
     def __init__(self, db_path: Path | str = "snapper_checkpoint.db"):
@@ -48,8 +59,15 @@ class SqlLiteSnapshotStorage(SnapshotStorage[T]):
         Args:
             db_path: Path to the SQLite database file.
         """
-        self.db_path = db_path
+        self.db_path = str(db_path)  # Normalize to string
         self._initialize_database()
+
+    def get_storage_identifier(self) -> str:
+        """
+        Get a unique identifier for this storage backend.
+        Returns the absolute path to the database file.
+        """
+        return os.path.abspath(self.db_path)
 
     def _initialize_database(self) -> None:
         """Create tables if they do not exist."""
@@ -158,6 +176,13 @@ class PickleSnapshotStorage(SnapshotStorage[T]):
             file_path: Path to the pickle file.
         """
         self.file_path = file_path
+
+    def get_storage_identifier(self) -> str:
+        """
+        Get a unique identifier for this storage backend.
+        Returns the absolute path to the pickle file.
+        """
+        return os.path.abspath(self.file_path)
 
     def store_snapshot(self, last_index: int, processed: list[T]) -> None:
         """

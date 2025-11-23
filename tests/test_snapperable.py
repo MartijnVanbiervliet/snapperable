@@ -114,3 +114,79 @@ def test_snapper_multithreading_with_shared_storage(tmp_path: Path):
     # Verify the results - each item should be processed exactly once
     assert len(results) == len(iterable)
     assert all(result == item * 2 for item, result in zip(iterable, results))
+
+
+def test_snapper_prevents_different_storage_instances_same_file_sqlite(tmp_path: Path):
+    """
+    Test that Snapper prevents two different SqlLiteSnapshotStorage instances
+    pointing to the same file from being used simultaneously.
+    """
+    snapshot_storage_path = tmp_path / "same_file.db"
+    
+    # Create two different storage instances pointing to the same file
+    storage1 = SqlLiteSnapshotStorage[int](snapshot_storage_path)
+    storage2 = SqlLiteSnapshotStorage[int](snapshot_storage_path)
+    
+    def process_item(item: int) -> int:
+        return item * 2
+    
+    iterable = range(10)
+    
+    # Create first Snapper with storage1
+    _snapper1 = Snapper(iterable, process_item, snapshot_storage=storage1)
+    
+    # Attempting to create a second Snapper with storage2 (different instance, same file)
+    # should raise ValueError
+    with pytest.raises(ValueError, match="already in use by another Snapper instance"):
+        _snapper2 = Snapper(iterable, process_item, snapshot_storage=storage2)
+
+
+def test_snapper_prevents_different_storage_instances_same_file_pickle(tmp_path: Path):
+    """
+    Test that Snapper prevents two different PickleSnapshotStorage instances
+    pointing to the same file from being used simultaneously.
+    """
+    snapshot_storage_path = str(tmp_path / "same_file.pkl")
+    
+    # Create two different storage instances pointing to the same file
+    storage1 = PickleSnapshotStorage[int](snapshot_storage_path)
+    storage2 = PickleSnapshotStorage[int](snapshot_storage_path)
+    
+    def process_item(item: int) -> int:
+        return item * 2
+    
+    iterable = range(10)
+    
+    # Create first Snapper with storage1
+    _snapper1 = Snapper(iterable, process_item, snapshot_storage=storage1)
+    
+    # Attempting to create a second Snapper with storage2 (different instance, same file)
+    # should raise ValueError
+    with pytest.raises(ValueError, match="already in use by another Snapper instance"):
+        _snapper2 = Snapper(iterable, process_item, snapshot_storage=storage2)
+
+
+def test_snapper_prevents_mixed_storage_types_same_file(tmp_path: Path):
+    """
+    Test that Snapper prevents different storage types (Pickle and SQLite)
+    from being used if they somehow point to the same file path.
+    This is an edge case but good to protect against.
+    """
+    snapshot_storage_path = str(tmp_path / "same_file.data")
+    
+    # Create different storage types pointing to the same file path
+    storage1 = SqlLiteSnapshotStorage[int](snapshot_storage_path)
+    storage2 = PickleSnapshotStorage[int](snapshot_storage_path)
+    
+    def process_item(item: int) -> int:
+        return item * 2
+    
+    iterable = range(10)
+    
+    # Create first Snapper with storage1
+    _snapper1 = Snapper(iterable, process_item, snapshot_storage=storage1)
+    
+    # Attempting to create a second Snapper with storage2 (different type, same file)
+    # should raise ValueError
+    with pytest.raises(ValueError, match="already in use by another Snapper instance"):
+        _snapper2 = Snapper(iterable, process_item, snapshot_storage=storage2)

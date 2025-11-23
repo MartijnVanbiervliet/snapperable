@@ -13,8 +13,8 @@ class Snapper(Generic[T]):
     This allows resuming long-running processes without losing progress.
     """
 
-    # Class-level registry to track active storage instances
-    _active_storages: set[int] = set()
+    # Class-level registry to track active storage file paths
+    _active_storages: set[str] = set()
     _storage_lock = threading.Lock()
 
     def __init__(
@@ -46,18 +46,18 @@ class Snapper(Generic[T]):
         if snapshot_storage is None:
             snapshot_storage = SqlLiteSnapshotStorage()
         
-        # Check if this storage instance is already in use
-        storage_id = id(snapshot_storage)
+        # Check if this storage file path is already in use
+        storage_identifier = snapshot_storage.get_storage_identifier()
         with Snapper._storage_lock:
-            if storage_id in Snapper._active_storages:
+            if storage_identifier in Snapper._active_storages:
                 raise ValueError(
                     "The provided snapshot_storage instance is already in use by another Snapper instance. "
                     "Each Snapper must have its own snapshot_storage instance to avoid race conditions."
                 )
-            Snapper._active_storages.add(storage_id)
+            Snapper._active_storages.add(storage_identifier)
         
         self.snapshot_storage = snapshot_storage
-        self._storage_id = storage_id
+        self._storage_identifier = storage_identifier
 
         if batch_processor is None:
             batch_processor = BatchProcessor(
@@ -98,14 +98,14 @@ class Snapper(Generic[T]):
         This allows the storage to be reused by another Snapper instance.
         """
         with Snapper._storage_lock:
-            Snapper._active_storages.discard(self._storage_id)
+            Snapper._active_storages.discard(self._storage_identifier)
 
     def __del__(self):
         """
         Cleanup when the Snapper instance is destroyed.
         """
         # Only release if initialization completed successfully
-        if hasattr(self, '_storage_id'):
+        if hasattr(self, '_storage_identifier'):
             self._release_storage()
 
     def __enter__(self):
