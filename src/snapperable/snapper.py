@@ -1,6 +1,8 @@
 from typing import Iterable, Callable, Any, Optional, TypeVar, Generic
+from types import TracebackType
 from snapperable.snapshot_storage import SnapshotStorage, SqlLiteSnapshotStorage
 from snapperable.batch_processor import BatchProcessor
+import threading
 
 T = TypeVar("T")
 
@@ -10,6 +12,10 @@ class Snapper(Generic[T]):
     Snapper processes an iterable with a user-defined function, saving intermediate snapshots to disk.
     This allows resuming long-running processes without losing progress.
     """
+
+    # Class-level registry to track active storage instances
+    _active_storages: set[int] = set()
+    _storage_lock = threading.Lock()
 
     def __init__(
         self,
@@ -30,13 +36,28 @@ class Snapper(Generic[T]):
             batch_processor: Optional BatchProcessor instance. If not provided, a default one is created.
             batch_size: The number of items to batch before saving (used if batch_processor is None).
             max_wait_time: The maximum time to wait before saving a batch (used if batch_processor is None).
+        
+        Raises:
+            ValueError: If the provided snapshot_storage is already in use by another Snapper instance.
         """
         self.iterable = iterable
         self.fn = fn
 
         if snapshot_storage is None:
             snapshot_storage = SqlLiteSnapshotStorage()
+        
+        # Check if this storage instance is already in use
+        storage_id = id(snapshot_storage)
+        with Snapper._storage_lock:
+            if storage_id in Snapper._active_storages:
+                raise ValueError(
+                    "The provided snapshot_storage instance is already in use by another Snapper instance. "
+                    "Each Snapper must have its own snapshot_storage instance to avoid race conditions."
+                )
+            Snapper._active_storages.add(storage_id)
+        
         self.snapshot_storage = snapshot_storage
+        self._storage_id = storage_id
 
         if batch_processor is None:
             batch_processor = BatchProcessor(
@@ -70,3 +91,37 @@ class Snapper(Generic[T]):
             The list of processed results, or an empty list if no snapshot exists.
         """
         return self.snapshot_storage.load_snapshot()
+
+    def _release_storage(self) -> None:
+        """
+        Release the storage instance from the active registry.
+        This allows the storage to be reused by another Snapper instance.
+        """
+        with Snapper._storage_lock:
+            Snapper._active_storages.discard(self._storage_id)
+
+    def __del__(self):
+        """
+        Cleanup when the Snapper instance is destroyed.
+        """
+        # Only release if initialization completed successfully
+        if hasattr(self, '_storage_id'):
+            self._release_storage()
+
+    def __enter__(self):
+        """
+        Context manager entry.
+        """
+        return self
+
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc_val: BaseException | None,
+        exc_tb: TracebackType | None,
+    ) -> bool:
+        """
+        Context manager exit. Releases the storage.
+        """
+        self._release_storage()
+        return False
