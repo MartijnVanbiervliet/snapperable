@@ -43,7 +43,7 @@ The default storage backend uses SQLite to persist checkpoints. This is the reco
 
 ```python
 from snapperable import Snapper
-from snapperable.snapshot_storage import SqlLiteSnapshotStorage
+from snapperable.storage.sqlite_storage import SqlLiteSnapshotStorage
 
 # Create a custom SQLite storage with a specific database path
 storage = SqlLiteSnapshotStorage(db_path="my_checkpoint.db")
@@ -68,7 +68,7 @@ An alternative storage backend that uses Python's pickle module to serialize che
 
 ```python
 from snapperable import Snapper
-from snapperable.snapshot_storage import PickleSnapshotStorage
+from snapperable.storage.pickle_storage import PickleSnapshotStorage
 
 # Create a pickle-based storage
 storage = PickleSnapshotStorage(file_path="my_checkpoint.pkl")
