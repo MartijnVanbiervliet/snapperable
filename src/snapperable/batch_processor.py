@@ -1,5 +1,4 @@
 from typing import Any, List
-import threading
 import time
 
 from snapperable.snapshot_storage import SnapshotStorage
@@ -29,7 +28,6 @@ class BatchProcessor:
         self.batch_size = batch_size
         self.max_wait_time = max_wait_time
         self.current_batch: List[Any] = []
-        # self.lock = threading.Lock()
         self.last_add_time = None
 
     def add_item(self, item: Any) -> None:
