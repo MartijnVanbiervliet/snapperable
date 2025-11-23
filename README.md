@@ -87,37 +87,6 @@ snapper.start()
 - Good for smaller datasets
 - Default path: `snapper_checkpoint.pkl`
 
-### Custom Storage Backends
-
-You can create your own storage backend by extending the `SnapshotStorage` base class:
-
-```python
-from snapperable.snapshot_storage import SnapshotStorage
-from typing import TypeVar
-
-T = TypeVar("T")
-
-class MyCustomStorage(SnapshotStorage[T]):
-    def __init__(self, path: str):
-        self.path = path
-    
-    def store_snapshot(self, last_index: int, processed: list[T]) -> None:
-        # Your implementation here
-        pass
-    
-    def load_snapshot(self) -> list[T]:
-        # Your implementation here
-        pass
-    
-    def load_last_index(self) -> int:
-        # Your implementation here
-        pass
-    
-    def get_storage_identifier(self) -> str:
-        # Return a unique identifier for this storage
-        return os.path.abspath(self.path)
-```
-
 ### Batch Processing Configuration
 
 Control when snapshots are saved using batch size and time thresholds:
