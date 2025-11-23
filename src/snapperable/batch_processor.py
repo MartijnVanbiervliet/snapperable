@@ -1,7 +1,7 @@
 from typing import Any, List
 import time
 
-from snapperable.snapshot_storage import SnapshotStorage
+from snapperable.storage.snapshot_storage import SnapshotStorage
 from snapperable.logger import logger
 
 

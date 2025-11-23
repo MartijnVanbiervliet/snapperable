@@ -1,9 +1,10 @@
 import os
 import pytest
-from snapperable import Snapper
-from snapperable.snapshot_storage import PickleSnapshotStorage, SqlLiteSnapshotStorage
-
 from pathlib import Path
+
+from snapperable.snapper import Snapper
+from snapperable.storage.pickle_storage import PickleSnapshotStorage
+from snapperable.storage.sqlite_storage import SqlLiteSnapshotStorage
 
 
 class SimulatedInterrupt(Exception):

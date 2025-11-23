@@ -1,6 +1,8 @@
 import os
 import pytest
-from snapperable.snapshot_storage import PickleSnapshotStorage, SqlLiteSnapshotStorage
+import pytest
+from snapperable.storage.pickle_storage import PickleSnapshotStorage
+from snapperable.storage.sqlite_storage import SqlLiteSnapshotStorage
 
 
 class TestPickleSnapshotStorage:

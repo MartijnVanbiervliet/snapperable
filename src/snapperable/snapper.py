@@ -1,8 +1,10 @@
 from typing import Iterable, Callable, Any, Optional, TypeVar, Generic
 from types import TracebackType
-from snapperable.snapshot_storage import SnapshotStorage, SqlLiteSnapshotStorage
-from snapperable.batch_processor import BatchProcessor
 import threading
+
+from snapperable.storage.snapshot_storage import SnapshotStorage
+from snapperable.storage.sqlite_storage import SqlLiteSnapshotStorage
+from snapperable.batch_processor import BatchProcessor
 
 T = TypeVar("T")
 
