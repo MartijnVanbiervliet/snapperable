@@ -21,7 +21,6 @@ class SQLiteSnapshotStorage(SnapshotStorage[T]):
             db_path: Path to the SQLite database file.
         """
         self.db_path = str(db_path)  # Normalize to string
-        self._initialize_database()
 
     def get_storage_identifier(self) -> str:
         """
@@ -32,6 +31,7 @@ class SQLiteSnapshotStorage(SnapshotStorage[T]):
 
     def _initialize_database(self) -> None:
         """Create tables if they do not exist."""
+        Path(self.db_path).parent.mkdir(parents=True, exist_ok=True)
         with sqlite3.connect(self.db_path) as conn:
             cursor = conn.cursor()
             cursor.execute(
@@ -58,6 +58,8 @@ class SQLiteSnapshotStorage(SnapshotStorage[T]):
         This is used when the database file is corrupted.
         """
         logger.warning("Database file is corrupted. Resetting the database.")
+        if os.path.exists(self.db_path):
+            os.remove(self.db_path)
         self._initialize_database()
 
     def store_snapshot(self, last_index: int, processed: list[T]) -> None:
@@ -68,6 +70,7 @@ class SQLiteSnapshotStorage(SnapshotStorage[T]):
             last_index: The last processed index.
             processed: The list of processed items to save.
         """
+        self._initialize_database()
         with sqlite3.connect(self.db_path) as conn:
             cursor = conn.cursor()
             # Update the last index
@@ -91,8 +94,9 @@ class SQLiteSnapshotStorage(SnapshotStorage[T]):
         Returns:
             A list of processed items.
         """
-        processed_items = []
+        processed_items: list[T] = []
         try:
+            self._initialize_database()
             with sqlite3.connect(self.db_path) as conn:
                 cursor = conn.cursor()
                 cursor.execute("SELECT result FROM processed_outputs")
