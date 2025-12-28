@@ -32,8 +32,6 @@ class SQLiteSnapshotStorage(SnapshotStorage[T]):
 
     def _initialize_database(self) -> None:
         """Create tables if they do not exist."""
-        if os.path.exists(self.db_path):
-            os.remove(self.db_path)
         with sqlite3.connect(self.db_path) as conn:
             cursor = conn.cursor()
             cursor.execute(
