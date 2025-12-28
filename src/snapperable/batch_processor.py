@@ -39,6 +39,8 @@ class BatchProcessor:
         self._shutdown = False
         
         # Track the current index (number of items processed so far)
+        # Note: This is safe because each BatchProcessor is used by a single Snapper instance,
+        # and Snapper prevents multiple instances from sharing the same storage backend
         self._current_index = self.storage_backend.load_last_index()
 
     def add_item(self, item: Any) -> None:

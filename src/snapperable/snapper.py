@@ -129,6 +129,7 @@ class Snapper(Generic[T]):
         """
         Context manager exit. Shuts down the batch processor and releases the storage.
         """
+        # shutdown() is idempotent, so it's safe to call even if already called in start()
         self.batch_processor.shutdown()
         self._release_storage()
         return False

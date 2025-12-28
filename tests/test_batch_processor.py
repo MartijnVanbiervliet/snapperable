@@ -94,11 +94,25 @@ def test_wait_time_functionality(mock_snapshot_storage):
     mock_snapshot_storage.store_snapshot.assert_called_once()
     assert len(processor.current_batch) == 0
 
-    processor2 = BatchProcessor(storage_backend=mock_snapshot_storage, batch_size=10, max_wait_time=1)
-    processor2.add_item("item3")
+
+def test_wait_time_not_exceeded():
+    """
+    Test that the batch is not flushed when the wait time is not exceeded.
+    """
+    mock_storage = MagicMock()
+    mock_storage.load_last_index.return_value = -1
+    processor = BatchProcessor(storage_backend=mock_storage, batch_size=10, max_wait_time=1)
+    processor.add_item("item3")
     time.sleep(0.5)
-    processor2.add_item("item4")  # Should not trigger flush yet
-    processor2.shutdown()
-    assert mock_snapshot_storage.store_snapshot.call_count == 1
+    processor.add_item("item4")  # Should not trigger flush yet
+    
+    # Verify no flush happened yet
+    assert mock_storage.store_snapshot.call_count == 0
+    
+    # Now flush and shutdown
+    processor.flush()
+    processor.shutdown()
+    # Should have flushed once
+    assert mock_storage.store_snapshot.call_count == 1
 
 

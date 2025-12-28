@@ -15,12 +15,10 @@ def test_processing_continues_during_slow_save():
     """
     # Create a mock storage that simulates slow saves
     mock_storage = MagicMock()
-    save_times = []
     save_count = [0]
     
     def slow_store_snapshot(last_index, processed):
         save_count[0] += 1
-        save_times.append(time.time())
         time.sleep(0.5)  # Simulate slow I/O
     
     mock_storage.store_snapshot.side_effect = slow_store_snapshot
