@@ -7,7 +7,7 @@ authors = [
 ]
 license = "MIT"
 readme = "README.md"
-requires-python = ">=3.8"
+requires-python = ">=3.10"
 dependencies = []
 
 [tool.pytest.ini_options]
@@ -16,8 +16,16 @@ testpaths = ["."]
 
 [dependency-groups]
 dev = [
+    "ipython>=8.37.0",
     "pytest>=8.3.5",
 ]
 
 [project.optional-dependencies]
 test = ["pytest"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[build-system]
+requires = ["setuptools", "wheel"]
+build-backend = "setuptools.build_meta"
