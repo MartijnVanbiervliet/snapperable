@@ -28,7 +28,7 @@ class BatchProcessor:
         self.batch_size = batch_size
         self.max_wait_time = max_wait_time
         self.current_batch: List[Any] = []
-        self.last_add_time = None
+        self.last_flush_time = None
 
     def add_item(self, item: Any) -> None:
         """
@@ -43,6 +43,10 @@ class BatchProcessor:
         self.current_batch.append(item)
         logger.debug("Current batch size: %d", len(self.current_batch))
 
+        # Initialize last flush time if it's the first item
+        if self.last_flush_time is None:
+            self._update_last_flush_time()
+
         if self._is_wait_time_exceeded():
             logger.info("Wait time exceeded. Triggering flush.")
             should_flush = True
@@ -53,8 +57,6 @@ class BatchProcessor:
 
         if should_flush:
             self.flush()
-
-        self.last_add_time = time.time()
 
     def flush(self) -> None:
         """
@@ -71,7 +73,9 @@ class BatchProcessor:
             logger.info("Storing batch of size %d.", len(batch_to_store))
             last_index = self.storage_backend.load_last_index() + len(batch_to_store)
             self.storage_backend.store_snapshot(last_index, batch_to_store)
+            self._update_last_flush_time()
             logger.debug("Batch stored with last index: %d", last_index)
+
 
     def _is_wait_time_exceeded(self) -> bool:
         """
@@ -83,12 +87,18 @@ class BatchProcessor:
         if self.max_wait_time is None:
             return False
 
-        if self.last_add_time is None:
+        if self.last_flush_time is None:
             return False
 
         # Check if the last item addition was beyond the max wait time threshold
         current_time = time.time()
-        return (current_time - self.last_add_time) > self.max_wait_time
+        return (current_time - self.last_flush_time) > self.max_wait_time
+
+    def _update_last_flush_time(self) -> None:
+        """
+        Update the last flush time to the current time.
+        """
+        self.last_flush_time = time.time()
 
     def _is_batch_full(self) -> bool:
         """

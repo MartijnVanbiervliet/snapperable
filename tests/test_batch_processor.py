@@ -80,7 +80,14 @@ def test_wait_time_functionality(mock_snapshot_storage):
     processor.add_item("item1")
     assert mock_snapshot_storage.store_snapshot.call_count == 0
     time.sleep(1.5)  # Wait for the batch to be processed due to timeout
-    processor.add_item("item2")
 
+    processor.add_item("item2")  # Trigger the check for wait time exceeded
     mock_snapshot_storage.store_snapshot.assert_called_once()
     assert len(processor.current_batch) == 0
+
+    processor.add_item("item3")
+    time.sleep(0.5)
+    processor.add_item("item4")  # Should not trigger flush yet
+    assert mock_snapshot_storage.store_snapshot.call_count == 1
+
+
