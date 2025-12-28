@@ -3,7 +3,7 @@ from types import TracebackType
 import threading
 
 from snapperable.storage.snapshot_storage import SnapshotStorage
-from snapperable.storage.sqlite_storage import SqlLiteSnapshotStorage
+from snapperable.storage.sqlite_storage import SQLiteSnapshotStorage
 from snapperable.batch_processor import BatchProcessor
 
 T = TypeVar("T")
@@ -46,7 +46,7 @@ class Snapper(Generic[T]):
         self.fn = fn
 
         if snapshot_storage is None:
-            snapshot_storage = SqlLiteSnapshotStorage()
+            snapshot_storage = SQLiteSnapshotStorage()
         
         # Check if this storage file path is already in use
         storage_identifier = snapshot_storage.get_storage_identifier()

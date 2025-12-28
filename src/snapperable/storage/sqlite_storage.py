@@ -12,7 +12,7 @@ from snapperable.logger import logger
 T = TypeVar("T")
 
 
-class SqlLiteSnapshotStorage(SnapshotStorage[T]):
+class SQLiteSnapshotStorage(SnapshotStorage[T]):
     def __init__(self, db_path: Path | str = "snapper_checkpoint.db"):
         """
         Initialize the SQLite checkpoint manager.

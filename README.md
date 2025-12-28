@@ -37,16 +37,16 @@ results = snapper.load()
 
 `snapperable` provides two built-in storage backends for checkpointing:
 
-### SqlLiteSnapshotStorage (Default)
+### SQLiteSnapshotStorage (Default)
 
 The default storage backend uses SQLite to persist checkpoints. This is the recommended option for most use cases as it's robust and handles concurrent writes safely.
 
 ```python
 from snapperable import Snapper
-from snapperable.storage.sqlite_storage import SqlLiteSnapshotStorage
+from snapperable.storage.sqlite_storage import SQLiteSnapshotStorage
 
 # Create a custom SQLite storage with a specific database path
-storage = SqlLiteSnapshotStorage(db_path="my_checkpoint.db")
+storage = SQLiteSnapshotStorage(db_path="my_checkpoint.db")
 
 snapper = Snapper(
     range(1000),

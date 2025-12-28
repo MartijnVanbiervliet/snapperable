@@ -4,7 +4,7 @@ from pathlib import Path
 
 from snapperable.snapper import Snapper
 from snapperable.storage.pickle_storage import PickleSnapshotStorage
-from snapperable.storage.sqlite_storage import SqlLiteSnapshotStorage
+from snapperable.storage.sqlite_storage import SQLiteSnapshotStorage
 
 
 class SimulatedInterrupt(Exception):
@@ -53,7 +53,7 @@ def test_snapper_prevents_shared_storage(tmp_path: Path):
     """
     # Define a shared storage backend
     snapshot_storage_path = tmp_path / "test_shared_storage.db"
-    shared_storage = SqlLiteSnapshotStorage[int](snapshot_storage_path)
+    shared_storage = SQLiteSnapshotStorage[int](snapshot_storage_path)
 
     # Define a simple processing function
     def process_item(item: int) -> int:
@@ -83,7 +83,7 @@ def test_snapper_multithreading_with_shared_storage(tmp_path: Path):
 
     # Define a shared storage backend
     snapshot_storage_path = tmp_path / "test_multithreading.db"
-    shared_storage = SqlLiteSnapshotStorage[int](snapshot_storage_path)
+    shared_storage = SQLiteSnapshotStorage[int](snapshot_storage_path)
 
     # Define a simple processing function
     def process_item(item: int) -> int:
@@ -119,14 +119,14 @@ def test_snapper_multithreading_with_shared_storage(tmp_path: Path):
 
 def test_snapper_prevents_different_storage_instances_same_file_sqlite(tmp_path: Path):
     """
-    Test that Snapper prevents two different SqlLiteSnapshotStorage instances
+    Test that Snapper prevents two different SQLiteSnapshotStorage instances
     pointing to the same file from being used simultaneously.
     """
     snapshot_storage_path = tmp_path / "same_file.db"
     
     # Create two different storage instances pointing to the same file
-    storage1 = SqlLiteSnapshotStorage[int](snapshot_storage_path)
-    storage2 = SqlLiteSnapshotStorage[int](snapshot_storage_path)
+    storage1 = SQLiteSnapshotStorage[int](snapshot_storage_path)
+    storage2 = SQLiteSnapshotStorage[int](snapshot_storage_path)
     
     def process_item(item: int) -> int:
         return item * 2
@@ -176,7 +176,7 @@ def test_snapper_prevents_mixed_storage_types_same_file(tmp_path: Path):
     snapshot_storage_path = str(tmp_path / "same_file.data")
     
     # Create different storage types pointing to the same file path
-    storage1 = SqlLiteSnapshotStorage[int](snapshot_storage_path)
+    storage1 = SQLiteSnapshotStorage[int](snapshot_storage_path)
     storage2 = PickleSnapshotStorage[int](snapshot_storage_path)
     
     def process_item(item: int) -> int:

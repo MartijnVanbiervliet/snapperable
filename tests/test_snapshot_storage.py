@@ -1,8 +1,7 @@
 import os
 import pytest
-import pytest
 from snapperable.storage.pickle_storage import PickleSnapshotStorage
-from snapperable.storage.sqlite_storage import SqlLiteSnapshotStorage
+from snapperable.storage.sqlite_storage import SQLiteSnapshotStorage
 
 
 class TestPickleSnapshotStorage:
@@ -76,13 +75,13 @@ class TestPickleSnapshotStorage:
         assert loaded_last_index == -1
 
 
-class TestSqlLiteSnapshotStorage:
+class TestSQLiteSnapshotStorage:
     @pytest.fixture
     def storage(self, tmp_path):
         db_path = tmp_path / "test_snapshot.db"
-        return SqlLiteSnapshotStorage(db_path)
+        return SQLiteSnapshotStorage(db_path)
 
-    def test_save_and_load_snapshot(self, storage: SqlLiteSnapshotStorage):
+    def test_save_and_load_snapshot(self, storage: SQLiteSnapshotStorage):
         # Arrange
         data = {"key": "value"}
         last_index = 1
@@ -96,7 +95,7 @@ class TestSqlLiteSnapshotStorage:
         assert loaded_data == [data]
         assert loaded_last_index == last_index
 
-    def test_load_snapshot_when_db_is_empty(self, storage: SqlLiteSnapshotStorage):
+    def test_load_snapshot_when_db_is_empty(self, storage: SQLiteSnapshotStorage):
         # Act
         loaded_data = storage.load_snapshot()
         loaded_last_index = storage.load_last_index()
@@ -106,7 +105,7 @@ class TestSqlLiteSnapshotStorage:
         assert loaded_last_index == -1
 
     def test_save_snapshot_overwrites_existing_data(
-        self, storage: SqlLiteSnapshotStorage
+        self, storage: SQLiteSnapshotStorage
     ):
         # Arrange
         data1 = {"key1": "value1"}
@@ -124,14 +123,14 @@ class TestSqlLiteSnapshotStorage:
         assert loaded_data == [data1, data2]
         assert loaded_last_index == last_index2
 
-    def test_save_snapshot_creates_db_file(self, storage: SqlLiteSnapshotStorage):
+    def test_save_snapshot_creates_db_file(self, storage: SQLiteSnapshotStorage):
         # Act
         storage.store_snapshot(0, [{"key": "value"}])
 
         # Assert
         assert os.path.exists(storage.db_path)
 
-    def test_load_snapshot_with_corrupted_db(self, storage: SqlLiteSnapshotStorage):
+    def test_load_snapshot_with_corrupted_db(self, storage: SQLiteSnapshotStorage):
         # Arrange
         with open(storage.db_path, "wb") as f:
             f.write(b"corrupted data")
