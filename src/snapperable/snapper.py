@@ -75,16 +75,20 @@ class Snapper(Generic[T]):
         """
         last_index = self.snapshot_storage.load_last_index()
 
-        # Process from last_index + 1
-        for idx, item in enumerate(self.iterable):
-            if idx <= last_index:
-                continue
+        try:
+            # Process from last_index + 1
+            for idx, item in enumerate(self.iterable):
+                if idx <= last_index:
+                    continue
 
-            result = self.fn(item)
-            self.batch_processor.add_item(result)
+                result = self.fn(item)
+                self.batch_processor.add_item(result)
 
-        # Ensure all remaining items are saved
-        self.batch_processor.flush()
+            # Ensure all remaining items are saved
+            self.batch_processor.flush()
+        finally:
+            # Wait for background thread to finish saving, even if there's an exception
+            self.batch_processor.shutdown()
 
     def load(self) -> list[T]:
         """
@@ -123,7 +127,8 @@ class Snapper(Generic[T]):
         exc_tb: TracebackType | None,
     ) -> bool:
         """
-        Context manager exit. Releases the storage.
+        Context manager exit. Shuts down the batch processor and releases the storage.
         """
+        self.batch_processor.shutdown()
         self._release_storage()
         return False

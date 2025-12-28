@@ -31,6 +31,9 @@ def test_batch_threshold(batch_processor, mock_snapshot_storage):
     batch_processor.add_item("item2")
     batch_processor.add_item("item3")
 
+    # Shutdown to wait for background thread to complete
+    batch_processor.shutdown()
+    
     # Ensure the batch was processed
     mock_snapshot_storage.store_snapshot.assert_called_once()
     assert len(batch_processor.current_batch) == 0
@@ -44,6 +47,9 @@ def test_process_batch(batch_processor, mock_snapshot_storage):
     batch_processor.add_item("item2")
     batch_processor.flush()
 
+    # Shutdown to wait for background thread to complete
+    batch_processor.shutdown()
+    
     # Ensure the batch was processed
     mock_snapshot_storage.store_snapshot.assert_called_once()
     assert len(batch_processor.current_batch) == 0
@@ -59,6 +65,7 @@ def test_different_batch_sizes(mock_snapshot_storage):
     # Small batch size
     processor_small.add_item("item1")
     processor_small.add_item("item2")
+    processor_small.shutdown()
     mock_snapshot_storage.store_snapshot.assert_called_once()
 
     # Large batch size
@@ -68,6 +75,7 @@ def test_different_batch_sizes(mock_snapshot_storage):
     processor_large.add_item("item3")
     processor_large.add_item("item4")
     processor_large.add_item("item5")
+    processor_large.shutdown()
     assert mock_snapshot_storage.store_snapshot.call_count == 2
 
 
@@ -82,12 +90,15 @@ def test_wait_time_functionality(mock_snapshot_storage):
     time.sleep(1.5)  # Wait for the batch to be processed due to timeout
 
     processor.add_item("item2")  # Trigger the check for wait time exceeded
+    processor.shutdown()
     mock_snapshot_storage.store_snapshot.assert_called_once()
     assert len(processor.current_batch) == 0
 
-    processor.add_item("item3")
+    processor2 = BatchProcessor(storage_backend=mock_snapshot_storage, batch_size=10, max_wait_time=1)
+    processor2.add_item("item3")
     time.sleep(0.5)
-    processor.add_item("item4")  # Should not trigger flush yet
+    processor2.add_item("item4")  # Should not trigger flush yet
+    processor2.shutdown()
     assert mock_snapshot_storage.store_snapshot.call_count == 1
 
 

@@ -1,5 +1,7 @@
 from typing import Any, List
 import time
+import queue
+import threading
 
 from snapperable.storage.snapshot_storage import SnapshotStorage
 from snapperable.logger import logger
@@ -29,6 +31,15 @@ class BatchProcessor:
         self.max_wait_time = max_wait_time
         self.current_batch: List[Any] = []
         self.last_flush_time = None
+        
+        # Thread-safe queue for background saving
+        self._save_queue: queue.Queue[tuple[int, List[Any]] | None] = queue.Queue()
+        self._worker_thread = threading.Thread(target=self._save_worker, daemon=True)
+        self._worker_thread.start()
+        self._shutdown = False
+        
+        # Track the current index (number of items processed so far)
+        self._current_index = self.storage_backend.load_last_index()
 
     def add_item(self, item: Any) -> None:
         """
@@ -60,7 +71,7 @@ class BatchProcessor:
 
     def flush(self) -> None:
         """
-        Flush the current batch by storing it using the storage backend. Clears the batch.
+        Flush the current batch by enqueueing it for background saving. Clears the batch.
         """
         logger.info("Flushing current batch.")
         batch_to_store = None
@@ -70,11 +81,53 @@ class BatchProcessor:
             logger.debug("Batch cleared after flush.")
 
         if batch_to_store:
-            logger.info("Storing batch of size %d.", len(batch_to_store))
-            last_index = self.storage_backend.load_last_index() + len(batch_to_store)
-            self.storage_backend.store_snapshot(last_index, batch_to_store)
+            logger.info("Enqueueing batch of size %d for background saving.", len(batch_to_store))
+            # Calculate the new index based on current index + batch size
+            self._current_index += len(batch_to_store)
+            # Enqueue the batch for background saving
+            self._save_queue.put((self._current_index, batch_to_store))
             self._update_last_flush_time()
-            logger.debug("Batch stored with last index: %d", last_index)
+            logger.debug("Batch enqueued with last index: %d", self._current_index)
+
+    def _save_worker(self) -> None:
+        """
+        Background worker thread that processes the save queue.
+        Runs continuously until a sentinel value (None) is received.
+        """
+        while True:
+            item = self._save_queue.get()
+            if item is None:
+                # Sentinel value to stop the worker
+                self._save_queue.task_done()
+                break
+            
+            last_index, batch = item
+            try:
+                logger.info("Background thread storing batch of size %d.", len(batch))
+                self.storage_backend.store_snapshot(last_index, batch)
+                logger.debug("Background thread stored batch with last index: %d", last_index)
+            except Exception as e:
+                logger.error("Error storing snapshot in background thread: %s", e)
+            finally:
+                self._save_queue.task_done()
+
+    def shutdown(self) -> None:
+        """
+        Gracefully shutdown the background worker thread.
+        Waits for all queued items to be processed before stopping.
+        """
+        if self._shutdown:
+            return
+        
+        logger.info("Shutting down BatchProcessor background worker.")
+        # Send sentinel value to stop the worker
+        self._save_queue.put(None)
+        # Wait for all queued items to be processed
+        self._save_queue.join()
+        # Wait for worker thread to finish
+        self._worker_thread.join()
+        self._shutdown = True
+        logger.info("BatchProcessor background worker shutdown complete.")
 
 
     def _is_wait_time_exceeded(self) -> bool:
