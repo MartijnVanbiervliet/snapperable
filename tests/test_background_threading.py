@@ -185,7 +185,7 @@ def test_worker_thread_is_daemon():
     processor = BatchProcessor(storage_backend=mock_storage, batch_size=10)
     
     # Verify the worker thread is a daemon
-    assert processor._worker_thread.daemon is True
+    assert processor._storage_worker._worker_thread.daemon is True
     
     processor.shutdown()
 
