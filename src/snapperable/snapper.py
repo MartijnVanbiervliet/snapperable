@@ -182,12 +182,21 @@ class Snapper(Generic[T]):
         Load the processed results from the snapshot storage.
         Returns outputs that match the current input sequence.
         
+        Note: This method materializes the iterable to compare with stored inputs.
+        For large iterables, consider using load_all() if you don't need input matching.
+        
         Returns:
             The list of processed results, or an empty list if no snapshot exists.
         """
-        # Get current inputs from the iterable
-        current_inputs = list(self.iterable)
         stored_inputs = self.snapshot_storage.load_inputs()
+        
+        # If no stored inputs, return all outputs (backward compatibility)
+        if not stored_inputs:
+            return self.snapshot_storage.load_snapshot()
+        
+        # Materialize the iterable to compare with stored inputs
+        # This is necessary to determine which outputs match the current input sequence
+        current_inputs = list(self.iterable)
         
         # If inputs match, return the outputs
         if self._inputs_match(current_inputs, stored_inputs):

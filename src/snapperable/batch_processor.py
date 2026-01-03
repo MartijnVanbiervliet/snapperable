@@ -74,12 +74,14 @@ class BatchProcessor:
             logger.info("Storing batch of size %d.", len(batch_to_store))
             
             # Separate inputs and outputs
+            # Only store inputs that are not None (None means no input tracking for backward compatibility)
             inputs = [inp for inp, _ in batch_to_store if inp is not None]
             outputs = [out for _, out in batch_to_store]
             
-            # Store inputs
-            for inp in inputs:
-                self.storage_backend.store_input(inp)
+            # Store inputs (only if we have any)
+            if inputs:
+                for inp in inputs:
+                    self.storage_backend.store_input(inp)
             
             # Store outputs
             last_index = self.storage_backend.load_last_index() + len(outputs)

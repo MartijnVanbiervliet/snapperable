@@ -2,7 +2,7 @@
 
 import pickle
 import os
-from typing import TypeVar
+from typing import TypeVar, Any
 
 from snapperable.storage.snapshot_storage import SnapshotStorage
 from snapperable.logger import logger
@@ -66,7 +66,7 @@ class PickleSnapshotStorage(SnapshotStorage[T]):
         data = self._load_data()
         return data.get("last_index", -1)
 
-    def store_input(self, input_value: any) -> None:
+    def store_input(self, input_value: Any) -> None:
         """
         Store an input value.
         Args:
@@ -78,7 +78,7 @@ class PickleSnapshotStorage(SnapshotStorage[T]):
         data["inputs"] = inputs
         self._save_data(data)
 
-    def load_inputs(self) -> list[any]:
+    def load_inputs(self) -> list[Any]:
         """
         Load all stored input values.
         Returns:
