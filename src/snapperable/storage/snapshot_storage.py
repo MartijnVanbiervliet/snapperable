@@ -1,7 +1,7 @@
 """Abstract base class for snapshot storage backends."""
 
 from abc import ABC, abstractmethod
-from typing import TypeVar, Generic
+from typing import TypeVar, Generic, Any
 
 T = TypeVar("T")
 
@@ -49,5 +49,50 @@ class SnapshotStorage(ABC, Generic[T]):
         
         Returns:
             A unique string identifier for this storage (typically the absolute file path).
+        """
+        pass
+
+    @abstractmethod
+    def store_input(self, input_value: Any) -> None:
+        """
+        Store an input value.
+        Args:
+            input_value: The input value to store.
+        """
+        pass
+
+    @abstractmethod
+    def load_inputs(self) -> list[Any]:
+        """
+        Load all stored input values.
+        Returns:
+            A list of input values.
+        """
+        pass
+
+    @abstractmethod
+    def store_function_version(self, fn_version: str) -> None:
+        """
+        Store the function version (hash).
+        Args:
+            fn_version: The function version string.
+        """
+        pass
+
+    @abstractmethod
+    def load_function_version(self) -> str | None:
+        """
+        Load the stored function version.
+        Returns:
+            The function version string, or None if not available.
+        """
+        pass
+
+    @abstractmethod
+    def load_all_outputs(self) -> list[T]:
+        """
+        Load all processed outputs from storage, regardless of matching inputs.
+        Returns:
+            A list of all processed items.
         """
         pass

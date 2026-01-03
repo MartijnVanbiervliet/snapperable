@@ -36,13 +36,15 @@ class PickleSnapshotStorage(SnapshotStorage[T]):
             last_index: The last processed index.
             processed: The list of processed items to save.
         """
-        # Load existing processed items
-        existing_processed = self.load_snapshot()
+        # Load existing data
+        data = self._load_data()
+        existing_processed = data.get("processed", [])
         combined_processed = existing_processed + processed
 
         # Save the combined data
-        with open(self.file_path, "wb") as f:
-            pickle.dump({"last_index": last_index, "processed": combined_processed}, f)
+        data["last_index"] = last_index
+        data["processed"] = combined_processed
+        self._save_data(data)
 
     def load_snapshot(self) -> list[T]:
         """
@@ -51,13 +53,8 @@ class PickleSnapshotStorage(SnapshotStorage[T]):
         Returns:
             A list of processed items.
         """
-        try:
-            with open(self.file_path, "rb") as f:
-                data = pickle.load(f)
-                return data.get("processed", [])
-        except (FileNotFoundError, pickle.UnpicklingError, EOFError):
-            logger.warning(f"Pickle file '{self.file_path}' is corrupted or missing.")
-            return []
+        data = self._load_data()
+        return data.get("processed", [])
 
     def load_last_index(self) -> int:
         """
@@ -66,10 +63,76 @@ class PickleSnapshotStorage(SnapshotStorage[T]):
         Returns:
             The last processed index, or -1 if not available.
         """
+        data = self._load_data()
+        return data.get("last_index", -1)
+
+    def store_input(self, input_value: any) -> None:
+        """
+        Store an input value.
+        Args:
+            input_value: The input value to store.
+        """
+        data = self._load_data()
+        inputs = data.get("inputs", [])
+        inputs.append(input_value)
+        data["inputs"] = inputs
+        self._save_data(data)
+
+    def load_inputs(self) -> list[any]:
+        """
+        Load all stored input values.
+        Returns:
+            A list of input values.
+        """
+        data = self._load_data()
+        return data.get("inputs", [])
+
+    def store_function_version(self, fn_version: str) -> None:
+        """
+        Store the function version (hash).
+        Args:
+            fn_version: The function version string.
+        """
+        data = self._load_data()
+        data["function_version"] = fn_version
+        self._save_data(data)
+
+    def load_function_version(self) -> str | None:
+        """
+        Load the stored function version.
+        Returns:
+            The function version string, or None if not available.
+        """
+        data = self._load_data()
+        return data.get("function_version", None)
+
+    def load_all_outputs(self) -> list[T]:
+        """
+        Load all processed outputs from storage, regardless of matching inputs.
+        Returns:
+            A list of all processed items.
+        """
+        # This is the same as load_snapshot for Pickle
+        return self.load_snapshot()
+
+    def _load_data(self) -> dict:
+        """
+        Load all data from the pickle file.
+        Returns:
+            A dictionary containing all stored data.
+        """
         try:
             with open(self.file_path, "rb") as f:
-                data = pickle.load(f)
-                return data.get("last_index", -1)
+                return pickle.load(f)
         except (FileNotFoundError, pickle.UnpicklingError, EOFError):
             logger.warning(f"Pickle file '{self.file_path}' is corrupted or missing.")
-            return -1
+            return {}
+
+    def _save_data(self, data: dict) -> None:
+        """
+        Save all data to the pickle file.
+        Args:
+            data: A dictionary containing all data to store.
+        """
+        with open(self.file_path, "wb") as f:
+            pickle.dump(data, f)

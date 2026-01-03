@@ -50,6 +50,22 @@ class SQLiteSnapshotStorage(SnapshotStorage[T]):
                 )
                 """
             )
+            cursor.execute(
+                """
+                CREATE TABLE IF NOT EXISTS inputs (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    input_value BLOB NOT NULL
+                )
+                """
+            )
+            cursor.execute(
+                """
+                CREATE TABLE IF NOT EXISTS function_version (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    version TEXT NOT NULL
+                )
+                """
+            )
             conn.commit()
 
     def _reset_database(self):
@@ -128,3 +144,86 @@ class SQLiteSnapshotStorage(SnapshotStorage[T]):
         except sqlite3.DatabaseError:
             self._reset_database()
             return -1
+
+    def store_input(self, input_value: any) -> None:
+        """
+        Store an input value.
+        Args:
+            input_value: The input value to store.
+        """
+        self._initialize_database()
+        with sqlite3.connect(self.db_path) as conn:
+            cursor = conn.cursor()
+            serialized_input = pickle.dumps(input_value)
+            cursor.execute(
+                "INSERT INTO inputs (input_value) VALUES (?)",
+                (serialized_input,)
+            )
+            conn.commit()
+
+    def load_inputs(self) -> list[any]:
+        """
+        Load all stored input values.
+        Returns:
+            A list of input values.
+        """
+        inputs: list[any] = []
+        try:
+            self._initialize_database()
+            with sqlite3.connect(self.db_path) as conn:
+                cursor = conn.cursor()
+                cursor.execute("SELECT input_value FROM inputs ORDER BY id")
+                rows = cursor.fetchall()
+                for row in rows:
+                    try:
+                        inputs.append(pickle.loads(row[0]))
+                    except (pickle.UnpicklingError, EOFError):
+                        logger.warning("Corrupted input data encountered and skipped.")
+        except sqlite3.DatabaseError:
+            self._reset_database()
+        return inputs
+
+    def store_function_version(self, fn_version: str) -> None:
+        """
+        Store the function version (hash).
+        Args:
+            fn_version: The function version string.
+        """
+        self._initialize_database()
+        with sqlite3.connect(self.db_path) as conn:
+            cursor = conn.cursor()
+            # Clear existing version and store new one
+            cursor.execute("DELETE FROM function_version")
+            cursor.execute(
+                "INSERT INTO function_version (version) VALUES (?)",
+                (fn_version,)
+            )
+            conn.commit()
+
+    def load_function_version(self) -> str | None:
+        """
+        Load the stored function version.
+        Returns:
+            The function version string, or None if not available.
+        """
+        try:
+            self._initialize_database()
+            with sqlite3.connect(self.db_path) as conn:
+                cursor = conn.cursor()
+                cursor.execute(
+                    "SELECT version FROM function_version ORDER BY id DESC LIMIT 1"
+                )
+                row = cursor.fetchone()
+                return row[0] if row else None
+        except sqlite3.DatabaseError:
+            self._reset_database()
+            return None
+
+    def load_all_outputs(self) -> list[T]:
+        """
+        Load all processed outputs from storage, regardless of matching inputs.
+        Returns:
+            A list of all processed items.
+        """
+        # This is the same as load_snapshot for SQLite
+        return self.load_snapshot()

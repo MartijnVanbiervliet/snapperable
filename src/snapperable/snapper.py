@@ -1,12 +1,43 @@
 from typing import Iterable, Callable, Any, Optional, TypeVar, Generic
 from types import TracebackType
 import threading
+import hashlib
+import inspect
 
 from snapperable.storage.snapshot_storage import SnapshotStorage
 from snapperable.storage.sqlite_storage import SQLiteSnapshotStorage
 from snapperable.batch_processor import BatchProcessor
 
 T = TypeVar("T")
+
+
+def compute_function_version(fn: Callable) -> str:
+    """
+    Compute a version hash for a function based on its bytecode.
+    This helps detect when the function implementation has changed.
+    
+    Args:
+        fn: The function to compute a version for.
+        
+    Returns:
+        A string hash representing the function version.
+    """
+    try:
+        # Get the source code of the function
+        source = inspect.getsource(fn)
+        # Hash the source code
+        return hashlib.sha256(source.encode()).hexdigest()
+    except (OSError, TypeError):
+        # If we can't get source (e.g., built-in function, lambda),
+        # use the function's code object
+        try:
+            code = fn.__code__
+            # Hash the bytecode
+            return hashlib.sha256(code.co_code).hexdigest()
+        except AttributeError:
+            # If all else fails, return a constant hash
+            # This means we won't detect changes, but at least we won't crash
+            return "unknown"
 
 
 class Snapper(Generic[T]):
@@ -72,27 +103,164 @@ class Snapper(Generic[T]):
     def start(self) -> None:
         """
         Start processing the iterable, saving progress to disk.
+        Uses input-based tracking to handle dynamic iterables robustly.
         """
-        last_index = self.snapshot_storage.load_last_index()
-
-        # Process from last_index + 1
-        for idx, item in enumerate(self.iterable):
-            if idx <= last_index:
-                continue
-
+        # Compute and check function version
+        current_fn_version = compute_function_version(self.fn)
+        stored_fn_version = self.snapshot_storage.load_function_version()
+        
+        # Load previously stored inputs
+        stored_inputs = self.snapshot_storage.load_inputs()
+        stored_inputs_set = set()
+        
+        # Create a hashable representation of stored inputs
+        for inp in stored_inputs:
+            try:
+                stored_inputs_set.add(self._make_hashable(inp))
+            except TypeError:
+                # If input is not hashable, we'll process it again
+                pass
+        
+        # If function version changed and we have stored data, warn and continue
+        # (we'll reprocess items with the new function)
+        if stored_fn_version is not None and stored_fn_version != current_fn_version:
+            # Function changed - we should reprocess with new function
+            # Clear the stored inputs since we're starting fresh
+            stored_inputs_set.clear()
+        
+        # Store the current function version
+        self.snapshot_storage.store_function_version(current_fn_version)
+        
+        # Process the iterable
+        for item in self.iterable:
+            # Check if this input was already processed
+            try:
+                hashable_item = self._make_hashable(item)
+                if hashable_item in stored_inputs_set:
+                    continue
+            except TypeError:
+                # If item is not hashable, process it
+                pass
+            
+            # Process the item
             result = self.fn(item)
-            self.batch_processor.add_item(result)
+            
+            # Add to batch processor with input value
+            # The batch processor will store both input and output atomically
+            self.batch_processor.add_item(result, input_value=item)
+            
+            # Mark as processed in our local set
+            try:
+                stored_inputs_set.add(self._make_hashable(item))
+            except TypeError:
+                pass
 
         # Ensure all remaining items are saved
         self.batch_processor.flush()
 
+    def _make_hashable(self, obj: Any) -> Any:
+        """
+        Convert an object to a hashable representation.
+        
+        Args:
+            obj: The object to make hashable.
+            
+        Returns:
+            A hashable representation of the object.
+        """
+        if isinstance(obj, (list, tuple)):
+            return tuple(self._make_hashable(item) for item in obj)
+        elif isinstance(obj, dict):
+            return tuple(sorted((k, self._make_hashable(v)) for k, v in obj.items()))
+        elif isinstance(obj, set):
+            return frozenset(self._make_hashable(item) for item in obj)
+        else:
+            return obj
+
     def load(self) -> list[T]:
         """
         Load the processed results from the snapshot storage.
+        Returns outputs that match the current input sequence.
+        
         Returns:
             The list of processed results, or an empty list if no snapshot exists.
         """
-        return self.snapshot_storage.load_snapshot()
+        # Get current inputs from the iterable
+        current_inputs = list(self.iterable)
+        stored_inputs = self.snapshot_storage.load_inputs()
+        
+        # If inputs match, return the outputs
+        if self._inputs_match(current_inputs, stored_inputs):
+            return self.snapshot_storage.load_snapshot()
+        
+        # Otherwise, return outputs for matching inputs only
+        return self._get_matching_outputs(current_inputs, stored_inputs)
+    
+    def load_all(self) -> list[T]:
+        """
+        Load all processed outputs from the snapshot storage,
+        regardless of whether they match the current input sequence.
+        
+        Returns:
+            The list of all processed results, or an empty list if no snapshot exists.
+        """
+        return self.snapshot_storage.load_all_outputs()
+    
+    def _inputs_match(self, current_inputs: list[Any], stored_inputs: list[Any]) -> bool:
+        """
+        Check if current inputs match stored inputs.
+        
+        Args:
+            current_inputs: Current input values.
+            stored_inputs: Stored input values.
+            
+        Returns:
+            True if inputs match, False otherwise.
+        """
+        if len(current_inputs) != len(stored_inputs):
+            return False
+        
+        for current, stored in zip(current_inputs, stored_inputs):
+            if current != stored:
+                return False
+        
+        return True
+    
+    def _get_matching_outputs(self, current_inputs: list[Any], stored_inputs: list[Any]) -> list[T]:
+        """
+        Get outputs that match the current inputs.
+        
+        Args:
+            current_inputs: Current input values.
+            stored_inputs: Stored input values.
+            
+        Returns:
+            List of outputs for matching inputs.
+        """
+        all_outputs = self.snapshot_storage.load_all_outputs()
+        
+        # Create a mapping from stored inputs to outputs
+        input_to_output = {}
+        for inp, out in zip(stored_inputs, all_outputs):
+            try:
+                hashable_inp = self._make_hashable(inp)
+                input_to_output[hashable_inp] = out
+            except TypeError:
+                # If not hashable, skip
+                pass
+        
+        # Get outputs for current inputs
+        matching_outputs = []
+        for inp in current_inputs:
+            try:
+                hashable_inp = self._make_hashable(inp)
+                if hashable_inp in input_to_output:
+                    matching_outputs.append(input_to_output[hashable_inp])
+            except TypeError:
+                # If not hashable, skip
+                pass
+        
+        return matching_outputs
 
     def _release_storage(self) -> None:
         """
