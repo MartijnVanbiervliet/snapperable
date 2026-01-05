@@ -1,43 +1,13 @@
 from typing import Iterable, Callable, Any, Optional, TypeVar, Generic
 from types import TracebackType
 import threading
-import hashlib
-import inspect
 
 from snapperable.storage.snapshot_storage import SnapshotStorage
 from snapperable.storage.sqlite_storage import SQLiteSnapshotStorage
 from snapperable.batch_processor import BatchProcessor
+from snapperable.function_hasher import FunctionHasher
 
 T = TypeVar("T")
-
-
-def compute_function_version(fn: Callable) -> str:
-    """
-    Compute a version hash for a function based on its bytecode.
-    This helps detect when the function implementation has changed.
-    
-    Args:
-        fn: The function to compute a version for.
-        
-    Returns:
-        A string hash representing the function version.
-    """
-    try:
-        # Get the source code of the function
-        source = inspect.getsource(fn)
-        # Hash the source code
-        return hashlib.sha256(source.encode()).hexdigest()
-    except (OSError, TypeError):
-        # If we can't get source (e.g., built-in function, lambda),
-        # use the function's code object
-        try:
-            code = fn.__code__
-            # Hash the bytecode
-            return hashlib.sha256(code.co_code).hexdigest()
-        except AttributeError:
-            # If all else fails, return a constant hash
-            # This means we won't detect changes, but at least we won't crash
-            return "unknown"
 
 
 class Snapper(Generic[T]):
@@ -106,7 +76,7 @@ class Snapper(Generic[T]):
         Uses input-based tracking to handle dynamic iterables robustly.
         """
         # Compute and check function version
-        current_fn_version = compute_function_version(self.fn)
+        current_fn_version = FunctionHasher.compute_hash(self.fn)
         stored_fn_version = self.snapshot_storage.load_function_version()
         
         # Load previously stored inputs
