@@ -30,14 +30,14 @@ class BatchProcessor:
         self.current_batch: List[Tuple[Any, Any]] = []  # List of (input, output) tuples
         self.last_flush_time = None
 
-    def add_item(self, item: Any, input_value: Any = None) -> None:
+    def add_item(self, item: Any, input_value: Any) -> None:
         """
         Add an item to the current batch. If the batch is full or the maximum wait time is exceeded,
         the batch is flushed.
 
         Args:
             item: The output item to be added to the batch.
-            input_value: The corresponding input value (optional, for input-based tracking).
+            input_value: The corresponding input value for input-based tracking.
         """
         logger.debug("Adding item to batch: %s", item)
         should_flush = False
@@ -74,14 +74,12 @@ class BatchProcessor:
             logger.info("Storing batch of size %d.", len(batch_to_store))
             
             # Separate inputs and outputs
-            # Only store inputs that are not None (None means no input tracking for backward compatibility)
-            inputs = [inp for inp, _ in batch_to_store if inp is not None]
+            inputs = [inp for inp, _ in batch_to_store]
             outputs = [out for _, out in batch_to_store]
             
-            # Store inputs (only if we have any)
-            if inputs:
-                for inp in inputs:
-                    self.storage_backend.store_input(inp)
+            # Store inputs
+            for inp in inputs:
+                self.storage_backend.store_input(inp)
             
             # Store outputs
             last_index = self.storage_backend.load_last_index() + len(outputs)
