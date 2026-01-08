@@ -5,7 +5,7 @@ import threading
 from snapperable.storage.snapshot_storage import SnapshotStorage
 from snapperable.storage.sqlite_storage import SQLiteSnapshotStorage
 from snapperable.batch_processor import BatchProcessor
-from snapperable.function_hasher import FunctionHasher
+from snapperable.snapshot_tracker import SnapshotTracker
 
 T = TypeVar("T")
 
@@ -75,43 +75,15 @@ class Snapper(Generic[T]):
         Start processing the iterable, saving progress to disk.
         Uses input-based tracking to handle dynamic iterables robustly.
         """
-        # Compute and check function version
-        current_fn_version = FunctionHasher.compute_hash(self.fn)
-        stored_fn_version = self.snapshot_storage.load_function_version()
+        # Create snapshot tracker to manage processed inputs
+        snapshot_tracker = SnapshotTracker(
+            iterable=self.iterable,
+            fn=self.fn,
+            snapshot_storage=self.snapshot_storage
+        )
         
-        # Load previously stored inputs
-        stored_inputs = self.snapshot_storage.load_inputs()
-        stored_inputs_set = set()
-        
-        # Create a hashable representation of stored inputs
-        for inp in stored_inputs:
-            try:
-                stored_inputs_set.add(self._make_hashable(inp))
-            except TypeError:
-                # If input is not hashable, we'll process it again
-                pass
-        
-        # If function version changed and we have stored data, warn and continue
-        # (we'll reprocess items with the new function)
-        if stored_fn_version is not None and stored_fn_version != current_fn_version:
-            # Function changed - we should reprocess with new function
-            # Clear the stored inputs since we're starting fresh
-            stored_inputs_set.clear()
-        
-        # Store the current function version
-        self.snapshot_storage.store_function_version(current_fn_version)
-        
-        # Process the iterable
-        for item in self.iterable:
-            # Check if this input was already processed
-            try:
-                hashable_item = self._make_hashable(item)
-                if hashable_item in stored_inputs_set:
-                    continue
-            except TypeError:
-                # If item is not hashable, process it
-                pass
-            
+        # Process remaining items
+        for item in snapshot_tracker.get_remaining():
             # Process the item
             result = self.fn(item)
             
@@ -119,11 +91,8 @@ class Snapper(Generic[T]):
             # The batch processor will store both input and output atomically
             self.batch_processor.add_item(result, input_value=item)
             
-            # Mark as processed in our local set
-            try:
-                stored_inputs_set.add(self._make_hashable(item))
-            except TypeError:
-                pass
+            # Mark as processed
+            snapshot_tracker.mark_processed(item)
 
         # Ensure all remaining items are saved
         self.batch_processor.flush()

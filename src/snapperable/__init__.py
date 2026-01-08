@@ -4,6 +4,7 @@ from snapperable.storage.pickle_storage import PickleSnapshotStorage
 from snapperable.storage.sqlite_storage import SQLiteSnapshotStorage
 from snapperable.batch_processor import BatchProcessor
 from snapperable.function_hasher import FunctionHasher
+from snapperable.snapshot_tracker import SnapshotTracker
 
 __all__ = [
     "Snapper",
@@ -12,4 +13,5 @@ __all__ = [
     "SQLiteSnapshotStorage",
     "BatchProcessor",
     "FunctionHasher",
+    "SnapshotTracker",
 ]
