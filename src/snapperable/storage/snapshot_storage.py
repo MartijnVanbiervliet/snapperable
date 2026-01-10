@@ -71,24 +71,6 @@ class SnapshotStorage(ABC, Generic[T]):
         pass
 
     @abstractmethod
-    def store_function_version(self, fn_version: str) -> None:
-        """
-        Store the function version (hash).
-        Args:
-            fn_version: The function version string.
-        """
-        pass
-
-    @abstractmethod
-    def load_function_version(self) -> str | None:
-        """
-        Load the stored function version.
-        Returns:
-            The function version string, or None if not available.
-        """
-        pass
-
-    @abstractmethod
     def load_all_outputs(self) -> list[T]:
         """
         Load all processed outputs from storage, regardless of matching inputs.

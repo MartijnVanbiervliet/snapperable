@@ -87,25 +87,6 @@ class PickleSnapshotStorage(SnapshotStorage[T]):
         data = self._load_data()
         return data.get("inputs", [])
 
-    def store_function_version(self, fn_version: str) -> None:
-        """
-        Store the function version (hash).
-        Args:
-            fn_version: The function version string.
-        """
-        data = self._load_data()
-        data["function_version"] = fn_version
-        self._save_data(data)
-
-    def load_function_version(self) -> str | None:
-        """
-        Load the stored function version.
-        Returns:
-            The function version string, or None if not available.
-        """
-        data = self._load_data()
-        return data.get("function_version", None)
-
     def load_all_outputs(self) -> list[T]:
         """
         Load all processed outputs from storage, regardless of matching inputs.

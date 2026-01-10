@@ -3,7 +3,6 @@
 from typing import Iterable, Any, Callable, TypeVar
 
 from snapperable.storage.snapshot_storage import SnapshotStorage
-from snapperable.function_hasher import FunctionHasher
 
 T = TypeVar("T")
 
@@ -13,7 +12,7 @@ class SnapshotTracker:
     Tracks processed inputs and determines which items remain to be processed.
     
     This class manages the state of processed items by comparing the current iterable
-    against stored inputs, and handles function version changes.
+    against stored inputs.
     """
     
     def __init__(
@@ -57,34 +56,21 @@ class SnapshotTracker:
     
     def _initialize(self) -> None:
         """
-        Initialize the tracker by loading stored inputs and checking function version.
+        Initialize the tracker by loading stored inputs.
         """
         if self._initialized:
             return
         
-        # Compute and check function version
-        current_fn_version = FunctionHasher.compute_hash(self.fn)
-        stored_fn_version = self.snapshot_storage.load_function_version()
-        
         # Load previously stored inputs
         stored_inputs = self.snapshot_storage.load_inputs()
         
-        # If function version changed and we have stored data, clear stored inputs
-        # (we'll reprocess items with the new function)
-        if stored_fn_version is not None and stored_fn_version != current_fn_version:
-            # Function changed - we should reprocess with new function
-            self._processed_inputs_set.clear()
-        else:
-            # Create a hashable representation of stored inputs
-            for inp in stored_inputs:
-                try:
-                    self._processed_inputs_set.add(self._make_hashable(inp))
-                except TypeError:
-                    # If input is not hashable, we'll process it again
-                    pass
-        
-        # Store the current function version
-        self.snapshot_storage.store_function_version(current_fn_version)
+        # Create a hashable representation of stored inputs
+        for inp in stored_inputs:
+            try:
+                self._processed_inputs_set.add(self._make_hashable(inp))
+            except TypeError:
+                # If input is not hashable, we'll process it again
+                pass
         
         self._initialized = True
     

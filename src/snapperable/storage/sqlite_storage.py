@@ -58,14 +58,6 @@ class SQLiteSnapshotStorage(SnapshotStorage[T]):
                 )
                 """
             )
-            cursor.execute(
-                """
-                CREATE TABLE IF NOT EXISTS function_version (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    version TEXT NOT NULL
-                )
-                """
-            )
             conn.commit()
 
     def _reset_database(self):
@@ -182,42 +174,6 @@ class SQLiteSnapshotStorage(SnapshotStorage[T]):
         except sqlite3.DatabaseError:
             self._reset_database()
         return inputs
-
-    def store_function_version(self, fn_version: str) -> None:
-        """
-        Store the function version (hash).
-        Args:
-            fn_version: The function version string.
-        """
-        self._initialize_database()
-        with sqlite3.connect(self.db_path) as conn:
-            cursor = conn.cursor()
-            # Clear existing version and store new one
-            cursor.execute("DELETE FROM function_version")
-            cursor.execute(
-                "INSERT INTO function_version (version) VALUES (?)",
-                (fn_version,)
-            )
-            conn.commit()
-
-    def load_function_version(self) -> str | None:
-        """
-        Load the stored function version.
-        Returns:
-            The function version string, or None if not available.
-        """
-        try:
-            self._initialize_database()
-            with sqlite3.connect(self.db_path) as conn:
-                cursor = conn.cursor()
-                cursor.execute(
-                    "SELECT version FROM function_version ORDER BY id DESC LIMIT 1"
-                )
-                row = cursor.fetchone()
-                return row[0] if row else None
-        except sqlite3.DatabaseError:
-            self._reset_database()
-            return None
 
     def load_all_outputs(self) -> list[T]:
         """

@@ -132,37 +132,6 @@ def test_snapper_load_all_returns_all_outputs(tmp_path: Path):
     assert len(matching_outputs) == 0
 
 
-def test_snapper_function_version_change_reprocesses(tmp_path: Path):
-    """
-    Test that when the function changes, items are reprocessed.
-    """
-    snapshot_storage_path = os.path.join(tmp_path, "test_fn_change.pkl")
-    
-    def process_v1(item: int) -> int:
-        return item * 2
-    
-    # First run
-    data = [1, 2, 3]
-    storage1 = PickleSnapshotStorage[int](snapshot_storage_path)
-    with Snapper(data, process_v1, snapshot_storage=storage1) as snapper:
-        snapper.start()
-        result = snapper.load()
-    
-    assert result == [2, 4, 6]
-    
-    # Second run with different function
-    def process_v2(item: int) -> int:
-        return item * 3  # Different logic
-    
-    storage2 = PickleSnapshotStorage[int](snapshot_storage_path)
-    with Snapper(data, process_v2, snapshot_storage=storage2) as snapper:
-        snapper.start()
-        result = snapper.load()
-    
-    # Should reprocess with new function
-    assert result == [3, 6, 9]
-
-
 def test_snapper_handles_duplicates_in_iterable(tmp_path: Path):
     """
     Test that Snapper correctly handles duplicate values in the iterable.
