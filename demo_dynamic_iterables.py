@@ -24,6 +24,7 @@ def demo_growing_iterable():
         storage_path = os.path.join(tmpdir, "demo1.pkl")
         
         def process(x):
+            print(f"Processing {x}...")
             return x * 2
         
         # First run: process 5 items
@@ -46,40 +47,6 @@ def demo_growing_iterable():
         print("✓ Only new items (5-9) were processed!")
 
 
-def demo_function_version_change():
-    """Demonstrate function version change detection."""
-    print("\n" + "="*60)
-    print("Demo 2: Function Version Change Detection")
-    print("="*60)
-    
-    with tempfile.TemporaryDirectory() as tmpdir:
-        storage_path = os.path.join(tmpdir, "demo2.pkl")
-        
-        # First run: multiply by 2
-        def process_v1(x):
-            return x * 2
-        
-        print("\nFirst run: Using function that multiplies by 2")
-        data = [1, 2, 3, 4, 5]
-        storage1 = PickleSnapshotStorage(storage_path)
-        with Snapper(data, process_v1, snapshot_storage=storage1) as snapper:
-            snapper.start()
-            result = snapper.load()
-        print(f"Results: {result}")
-        
-        # Second run: multiply by 3 (different function)
-        def process_v2(x):
-            return x * 3
-        
-        print("\nSecond run: Using function that multiplies by 3")
-        storage2 = PickleSnapshotStorage(storage_path)
-        with Snapper(data, process_v2, snapshot_storage=storage2) as snapper:
-            snapper.start()
-            result = snapper.load()
-        print(f"Results: {result}")
-        print("✓ All items were reprocessed with the new function!")
-
-
 def demo_load_vs_load_all():
     """Demonstrate difference between load() and load_all()."""
     print("\n" + "="*60)
@@ -90,6 +57,7 @@ def demo_load_vs_load_all():
         storage_path = os.path.join(tmpdir, "demo3.pkl")
         
         def process(x):
+            print(f"Processing {x}...")
             return x * 2
         
         # First run: process items
@@ -104,6 +72,7 @@ def demo_load_vs_load_all():
         data_v2 = [10, 20, 30]
         storage2 = PickleSnapshotStorage(storage_path)
         with Snapper(data_v2, process, snapshot_storage=storage2) as snapper:
+            snapper.start()
             result_load = snapper.load()
             result_load_all = snapper.load_all()
         
@@ -122,6 +91,7 @@ def demo_reordered_iterable():
         storage_path = os.path.join(tmpdir, "demo4.pkl")
         
         def process(x):
+            print(f"Processing {x}...")
             return x * 2
         
         # First run: process items in order
@@ -150,7 +120,6 @@ if __name__ == "__main__":
     print("="*60)
     
     demo_growing_iterable()
-    demo_function_version_change()
     demo_load_vs_load_all()
     demo_reordered_iterable()
     
