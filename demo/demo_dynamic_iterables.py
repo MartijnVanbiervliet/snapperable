@@ -4,7 +4,7 @@ Demonstration of the new dynamic iterable support in Snapperable.
 
 This script shows how Snapperable now handles:
 1. Growing iterables (adding new items)
-2. Function version changes
+2. Reordered iterables
 3. Different output retrieval methods (load vs load_all)
 """
 

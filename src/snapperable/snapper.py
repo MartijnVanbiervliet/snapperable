@@ -78,7 +78,6 @@ class Snapper(Generic[T]):
         # Create snapshot tracker to manage processed inputs
         snapshot_tracker = SnapshotTracker(
             iterable=self.iterable,
-            fn=self.fn,
             snapshot_storage=self.snapshot_storage
         )
         

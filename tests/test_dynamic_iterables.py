@@ -1,7 +1,6 @@
 """Tests for dynamic iterable support and input-based tracking."""
 
 import os
-import pytest
 from pathlib import Path
 
 from snapperable.snapper import Snapper

@@ -11,7 +11,6 @@ A Python library for robust processing of long-running iterables with automatic 
 - Automatic periodic checkpointing to disk
 - Resume processing from the last saved state
 - **Input-based tracking** for dynamic iterables that can grow or change
-- **Function versioning** to detect and handle changes in processing logic
 - Simple API: `Snapper(iterable, fn).start()` and `.load()`
 - Multiple storage backends: SQLite and Pickle
 - Batch processing with configurable thresholds
@@ -72,26 +71,6 @@ Snapperable provides two methods for retrieving results:
 with Snapper([1, 2, 3], process_item, snapshot_storage=storage) as snapper:
     matching_results = snapper.load()      # [2, 4, 6] - matches current inputs
     all_results = snapper.load_all()       # [2, 4, 6, 8, 10] - all stored outputs
-```
-
-### Function Version Detection
-
-Snapperable automatically detects when your processing function changes and reprocesses items accordingly:
-
-```python
-# First run with one function
-def process_v1(x):
-    return x * 2
-
-snapper = Snapper([1, 2, 3], process_v1, snapshot_storage=storage)
-snapper.start()  # Results: [2, 4, 6]
-
-# Second run with a different function
-def process_v2(x):
-    return x * 3
-
-snapper = Snapper([1, 2, 3], process_v2, snapshot_storage=storage)
-snapper.start()  # Reprocesses all items, results: [3, 6, 9]
 ```
 
 ## Storage Classes

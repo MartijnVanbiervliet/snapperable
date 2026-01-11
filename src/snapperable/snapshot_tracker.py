@@ -1,6 +1,6 @@
 """Tracks which inputs have been processed and determines remaining items."""
 
-from typing import Iterable, Any, Callable, TypeVar
+from typing import Iterable, Any, TypeVar
 
 from snapperable.storage.snapshot_storage import SnapshotStorage
 
@@ -18,7 +18,6 @@ class SnapshotTracker:
     def __init__(
         self,
         iterable: Iterable[T],
-        fn: Callable[[T], Any],
         snapshot_storage: SnapshotStorage[T]
     ):
         """
@@ -26,11 +25,9 @@ class SnapshotTracker:
         
         Args:
             iterable: The iterable containing items to process.
-            fn: The processing function.
             snapshot_storage: The storage backend for tracking processed items.
         """
         self.iterable = iterable
-        self.fn = fn
         self.snapshot_storage = snapshot_storage
         self._processed_inputs_set: set[Any] = set()
         self._initialized = False
