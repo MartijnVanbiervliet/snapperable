@@ -96,25 +96,6 @@ class Snapper(Generic[T]):
         # Ensure all remaining items are saved
         self.batch_processor.flush()
 
-    def _make_hashable(self, obj: Any) -> Any:
-        """
-        Convert an object to a hashable representation.
-        
-        Args:
-            obj: The object to make hashable.
-            
-        Returns:
-            A hashable representation of the object.
-        """
-        if isinstance(obj, (list, tuple)):
-            return tuple(self._make_hashable(item) for item in obj)
-        elif isinstance(obj, dict):
-            return tuple(sorted((k, self._make_hashable(v)) for k, v in obj.items()))
-        elif isinstance(obj, set):
-            return frozenset(self._make_hashable(item) for item in obj)
-        else:
-            return obj
-
     def load(self) -> list[T]:
         """
         Load the processed results from the snapshot storage.
@@ -190,7 +171,7 @@ class Snapper(Generic[T]):
         input_to_output = {}
         for inp, out in zip(stored_inputs, all_outputs):
             try:
-                hashable_inp = self._make_hashable(inp)
+                hashable_inp = SnapshotTracker._make_hashable(inp)
                 input_to_output[hashable_inp] = out
             except TypeError:
                 # If not hashable, skip
@@ -200,7 +181,7 @@ class Snapper(Generic[T]):
         matching_outputs = []
         for inp in current_inputs:
             try:
-                hashable_inp = self._make_hashable(inp)
+                hashable_inp = SnapshotTracker._make_hashable(inp)
                 if hashable_inp in input_to_output:
                     matching_outputs.append(input_to_output[hashable_inp])
             except TypeError:

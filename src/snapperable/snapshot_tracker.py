@@ -32,7 +32,8 @@ class SnapshotTracker:
         self._processed_inputs_set: set[Any] = set()
         self._initialized = False
     
-    def _make_hashable(self, obj: Any) -> Any:
+    @staticmethod
+    def _make_hashable(obj: Any) -> Any:
         """
         Convert an object to a hashable representation.
         
@@ -43,11 +44,11 @@ class SnapshotTracker:
             A hashable representation of the object.
         """
         if isinstance(obj, (list, tuple)):
-            return tuple(self._make_hashable(item) for item in obj)
+            return tuple(SnapshotTracker._make_hashable(item) for item in obj)
         elif isinstance(obj, dict):
-            return tuple(sorted((k, self._make_hashable(v)) for k, v in obj.items()))
+            return tuple(sorted((k, SnapshotTracker._make_hashable(v)) for k, v in obj.items()))
         elif isinstance(obj, set):
-            return frozenset(self._make_hashable(item) for item in obj)
+            return frozenset(SnapshotTracker._make_hashable(item) for item in obj)
         else:
             return obj
     
@@ -64,7 +65,7 @@ class SnapshotTracker:
         # Create a hashable representation of stored inputs
         for inp in stored_inputs:
             try:
-                self._processed_inputs_set.add(self._make_hashable(inp))
+                self._processed_inputs_set.add(SnapshotTracker._make_hashable(inp))
             except TypeError:
                 # If input is not hashable, we'll process it again
                 pass
@@ -83,7 +84,7 @@ class SnapshotTracker:
         for item in self.iterable:
             # Check if this input was already processed
             try:
-                hashable_item = self._make_hashable(item)
+                hashable_item = SnapshotTracker._make_hashable(item)
                 if hashable_item in self._processed_inputs_set:
                     continue
             except TypeError:
@@ -100,7 +101,7 @@ class SnapshotTracker:
             item: The item that has been processed.
         """
         try:
-            hashable_item = self._make_hashable(item)
+            hashable_item = SnapshotTracker._make_hashable(item)
             self._processed_inputs_set.add(hashable_item)
         except TypeError:
             # If not hashable, we can't track it
