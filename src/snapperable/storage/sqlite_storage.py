@@ -70,30 +70,49 @@ class SQLiteSnapshotStorage(SnapshotStorage[T]):
             os.remove(self.db_path)
         self._initialize_database()
 
-    def store_snapshot(self, last_index: int, processed: list[T]) -> None:
+    def store_snapshot(self, last_index: int, processed: list[T], inputs: list[Any]) -> None:
         """
-        Save the last processed index and append serialized results to the database.
+        Save the last processed index, serialized results, and corresponding inputs atomically to the database.
 
         Args:
             last_index: The last processed index.
             processed: The list of processed items to save.
+            inputs: The list of input values corresponding to the processed items.
         """
         self._initialize_database()
         with sqlite3.connect(self.db_path) as conn:
             cursor = conn.cursor()
-            # Update the last index
-            cursor.execute("DELETE FROM checkpoints")
-            cursor.execute(
-                "INSERT INTO checkpoints (last_index) VALUES (?)", (last_index,)
-            )
+            
+            # Begin transaction for atomic operation
+            cursor.execute("BEGIN TRANSACTION")
+            
+            try:
+                # Update the last index
+                cursor.execute("DELETE FROM checkpoints")
+                cursor.execute(
+                    "INSERT INTO checkpoints (last_index) VALUES (?)", (last_index,)
+                )
 
-            # Serialize and append processed results
-            serialized_data = [(pickle.dumps(item),) for item in processed]
-            cursor.executemany(
-                "INSERT INTO processed_outputs (result) VALUES (?)",
-                serialized_data,
-            )
-            conn.commit()
+                # Serialize and append processed results
+                serialized_outputs = [(pickle.dumps(item),) for item in processed]
+                cursor.executemany(
+                    "INSERT INTO processed_outputs (result) VALUES (?)",
+                    serialized_outputs,
+                )
+                
+                # Serialize and append inputs
+                serialized_inputs = [(pickle.dumps(item),) for item in inputs]
+                cursor.executemany(
+                    "INSERT INTO inputs (input_value) VALUES (?)",
+                    serialized_inputs,
+                )
+                
+                # Commit the transaction
+                conn.commit()
+            except Exception as e:
+                # Rollback on error
+                conn.rollback()
+                raise e
 
     def load_snapshot(self) -> list[T]:
         """
@@ -136,22 +155,6 @@ class SQLiteSnapshotStorage(SnapshotStorage[T]):
         except sqlite3.DatabaseError:
             self._reset_database()
             return -1
-
-    def store_input(self, input_value: Any) -> None:
-        """
-        Store an input value.
-        Args:
-            input_value: The input value to store.
-        """
-        self._initialize_database()
-        with sqlite3.connect(self.db_path) as conn:
-            cursor = conn.cursor()
-            serialized_input = pickle.dumps(input_value)
-            cursor.execute(
-                "INSERT INTO inputs (input_value) VALUES (?)",
-                (serialized_input,)
-            )
-            conn.commit()
 
     def load_inputs(self) -> list[Any]:
         """

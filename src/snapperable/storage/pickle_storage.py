@@ -27,23 +27,29 @@ class PickleSnapshotStorage(SnapshotStorage[T]):
         """
         return os.path.abspath(self.file_path)
 
-    def store_snapshot(self, last_index: int, processed: list[T]) -> None:
+    def store_snapshot(self, last_index: int, processed: list[T], inputs: list[Any]) -> None:
         """
-        Save the last processed index and all processed results to a pickle file.
-        This method ensures that existing processed items are loaded and appended before saving.
+        Save the last processed index, processed results, and corresponding inputs atomically.
+        This method ensures that existing processed items and inputs are loaded and appended before saving.
 
         Args:
             last_index: The last processed index.
             processed: The list of processed items to save.
+            inputs: The list of input values corresponding to the processed items.
         """
         # Load existing data
         data = self._load_data()
         existing_processed = data.get("processed", [])
+        existing_inputs = data.get("inputs", [])
+        
+        # Append new data
         combined_processed = existing_processed + processed
+        combined_inputs = existing_inputs + inputs
 
-        # Save the combined data
+        # Save the combined data atomically
         data["last_index"] = last_index
         data["processed"] = combined_processed
+        data["inputs"] = combined_inputs
         self._save_data(data)
 
     def load_snapshot(self) -> list[T]:
@@ -65,18 +71,6 @@ class PickleSnapshotStorage(SnapshotStorage[T]):
         """
         data = self._load_data()
         return data.get("last_index", -1)
-
-    def store_input(self, input_value: Any) -> None:
-        """
-        Store an input value.
-        Args:
-            input_value: The input value to store.
-        """
-        data = self._load_data()
-        inputs = data.get("inputs", [])
-        inputs.append(input_value)
-        data["inputs"] = inputs
-        self._save_data(data)
 
     def load_inputs(self) -> list[Any]:
         """

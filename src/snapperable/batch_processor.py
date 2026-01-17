@@ -77,13 +77,9 @@ class BatchProcessor:
             inputs = [inp for inp, _ in batch_to_store]
             outputs = [out for _, out in batch_to_store]
             
-            # Store inputs
-            for inp in inputs:
-                self.storage_backend.store_input(inp)
-            
-            # Store outputs
+            # Store inputs and outputs atomically
             last_index = self.storage_backend.load_last_index() + len(outputs)
-            self.storage_backend.store_snapshot(last_index, outputs)
+            self.storage_backend.store_snapshot(last_index, outputs, inputs)
             
             self._update_last_flush_time()
             logger.debug("Batch stored with last index: %d", last_index)

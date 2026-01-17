@@ -13,12 +13,13 @@ class SnapshotStorage(ABC, Generic[T]):
     """
 
     @abstractmethod
-    def store_snapshot(self, last_index: int, processed: list[T]) -> None:
+    def store_snapshot(self, last_index: int, processed: list[T], inputs: list[Any]) -> None:
         """
-        Save snapshot to storage.
+        Save snapshot to storage atomically.
         Args:
             last_index: The last processed index.
             processed: The list of processed items to save.
+            inputs: The list of input values corresponding to the processed items.
         """
         pass
 
@@ -49,15 +50,6 @@ class SnapshotStorage(ABC, Generic[T]):
         
         Returns:
             A unique string identifier for this storage (typically the absolute file path).
-        """
-        pass
-
-    @abstractmethod
-    def store_input(self, input_value: Any) -> None:
-        """
-        Store an input value.
-        Args:
-            input_value: The input value to store.
         """
         pass
 
