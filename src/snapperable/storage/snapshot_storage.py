@@ -13,11 +13,10 @@ class SnapshotStorage(ABC, Generic[T]):
     """
 
     @abstractmethod
-    def store_snapshot(self, last_index: int, processed: list[T], inputs: list[Any]) -> None:
+    def store_snapshot(self, processed: list[T], inputs: list[Any]) -> None:
         """
         Save snapshot to storage atomically.
         Args:
-            last_index: The last processed index.
             processed: The list of processed items to save.
             inputs: The list of input values corresponding to the processed items.
         """
@@ -29,15 +28,6 @@ class SnapshotStorage(ABC, Generic[T]):
         Load snapshot state.
         Returns:
             A list of processed items.
-        """
-        pass
-
-    @abstractmethod
-    def load_last_index(self) -> int:
-        """
-        Load only the last processed index, without loading the full processed results.
-        Returns:
-            The last processed index, or -1 if not available.
         """
         pass
 

@@ -36,14 +36,6 @@ class SQLiteSnapshotStorage(SnapshotStorage[T]):
             cursor = conn.cursor()
             cursor.execute(
                 """
-                CREATE TABLE IF NOT EXISTS checkpoints (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    last_index INTEGER NOT NULL
-                )
-                """
-            )
-            cursor.execute(
-                """
                 CREATE TABLE IF NOT EXISTS processed_outputs (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     result BLOB NOT NULL
@@ -70,12 +62,11 @@ class SQLiteSnapshotStorage(SnapshotStorage[T]):
             os.remove(self.db_path)
         self._initialize_database()
 
-    def store_snapshot(self, last_index: int, processed: list[T], inputs: list[Any]) -> None:
+    def store_snapshot(self, processed: list[T], inputs: list[Any]) -> None:
         """
-        Save the last processed index, serialized results, and corresponding inputs atomically to the database.
+        Save serialized results and corresponding inputs atomically to the database.
 
         Args:
-            last_index: The last processed index.
             processed: The list of processed items to save.
             inputs: The list of input values corresponding to the processed items.
         """
@@ -87,12 +78,6 @@ class SQLiteSnapshotStorage(SnapshotStorage[T]):
             cursor.execute("BEGIN TRANSACTION")
             
             try:
-                # Update the last index
-                cursor.execute("DELETE FROM checkpoints")
-                cursor.execute(
-                    "INSERT INTO checkpoints (last_index) VALUES (?)", (last_index,)
-                )
-
                 # Serialize and append processed results
                 serialized_outputs = [(pickle.dumps(item),) for item in processed]
                 cursor.executemany(
@@ -136,25 +121,6 @@ class SQLiteSnapshotStorage(SnapshotStorage[T]):
         except sqlite3.DatabaseError:
             self._reset_database()
         return processed_items
-
-    def load_last_index(self) -> int:
-        """
-        Load the last processed index from the database.
-
-        Returns:
-            The last processed index, or -1 if not available.
-        """
-        try:
-            with sqlite3.connect(self.db_path) as conn:
-                cursor = conn.cursor()
-                cursor.execute(
-                    "SELECT last_index FROM checkpoints ORDER BY id DESC LIMIT 1"
-                )
-                row = cursor.fetchone()
-                return row[0] if row else -1
-        except sqlite3.DatabaseError:
-            self._reset_database()
-            return -1
 
     def load_inputs(self) -> list[Any]:
         """

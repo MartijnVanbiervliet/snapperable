@@ -14,29 +14,24 @@ class TestPickleSnapshotStorage:
         # Arrange
         data = {"key": "value"}
         input_data = "input1"
-        last_index = 1
 
         # Act
-        storage.store_snapshot(last_index, [data], [input_data])
+        storage.store_snapshot([data], [input_data])
         loaded_data = storage.load_snapshot()
         loaded_inputs = storage.load_inputs()
-        loaded_last_index = storage.load_last_index()
 
         # Assert
         assert loaded_data == [data]
         assert loaded_inputs == [input_data]
-        assert loaded_last_index == last_index
 
     def test_load_snapshot_when_file_does_not_exist(
         self, storage: PickleSnapshotStorage
     ):
         # Act
         loaded_data = storage.load_snapshot()
-        loaded_last_index = storage.load_last_index()
 
         # Assert
         assert loaded_data == []
-        assert loaded_last_index == -1
 
     def test_save_snapshot_overwrites_existing_file(
         self, storage: PickleSnapshotStorage
@@ -46,24 +41,20 @@ class TestPickleSnapshotStorage:
         data2 = {"key2": "value2"}
         input1 = "input1"
         input2 = "input2"
-        last_index1 = 1
-        last_index2 = 2
 
         # Act
-        storage.store_snapshot(last_index1, [data1], [input1])
-        storage.store_snapshot(last_index2, [data2], [input2])
+        storage.store_snapshot([data1], [input1])
+        storage.store_snapshot([data2], [input2])
         loaded_data = storage.load_snapshot()
         loaded_inputs = storage.load_inputs()
-        loaded_last_index = storage.load_last_index()
 
         # Assert
         assert loaded_data == [data1, data2]
         assert loaded_inputs == [input1, input2]
-        assert loaded_last_index == last_index2
 
     def test_save_snapshot_creates_file(self, storage: PickleSnapshotStorage):
         # Act
-        storage.store_snapshot(0, [{"key": "value"}], ["input1"])
+        storage.store_snapshot([{"key": "value"}], ["input1"])
 
         # Assert
         assert os.path.exists(storage.file_path)
@@ -75,11 +66,9 @@ class TestPickleSnapshotStorage:
 
         # Act
         loaded_data = storage.load_snapshot()
-        loaded_last_index = storage.load_last_index()
 
         # Assert
         assert loaded_data == []
-        assert loaded_last_index == -1
 
 
 class TestSQLiteSnapshotStorage:
@@ -92,27 +81,22 @@ class TestSQLiteSnapshotStorage:
         # Arrange
         data = {"key": "value"}
         input_data = "input1"
-        last_index = 1
 
         # Act
-        storage.store_snapshot(last_index, [data], [input_data])
+        storage.store_snapshot([data], [input_data])
         loaded_data = storage.load_snapshot()
         loaded_inputs = storage.load_inputs()
-        loaded_last_index = storage.load_last_index()
 
         # Assert
         assert loaded_data == [data]
         assert loaded_inputs == [input_data]
-        assert loaded_last_index == last_index
 
     def test_load_snapshot_when_db_is_empty(self, storage: SQLiteSnapshotStorage):
         # Act
         loaded_data = storage.load_snapshot()
-        loaded_last_index = storage.load_last_index()
 
         # Assert
         assert loaded_data == []
-        assert loaded_last_index == -1
 
     def test_save_snapshot_overwrites_existing_data(
         self, storage: SQLiteSnapshotStorage
@@ -122,24 +106,20 @@ class TestSQLiteSnapshotStorage:
         data2 = {"key2": "value2"}
         input1 = "input1"
         input2 = "input2"
-        last_index1 = 1
-        last_index2 = 2
 
         # Act
-        storage.store_snapshot(last_index1, [data1], [input1])
-        storage.store_snapshot(last_index2, [data2], [input2])
+        storage.store_snapshot([data1], [input1])
+        storage.store_snapshot([data2], [input2])
         loaded_data = storage.load_snapshot()
         loaded_inputs = storage.load_inputs()
-        loaded_last_index = storage.load_last_index()
 
         # Assert
         assert loaded_data == [data1, data2]
         assert loaded_inputs == [input1, input2]
-        assert loaded_last_index == last_index2
 
     def test_save_snapshot_creates_db_file(self, storage: SQLiteSnapshotStorage):
         # Act
-        storage.store_snapshot(0, [{"key": "value"}], ["input1"])
+        storage.store_snapshot([{"key": "value"}], ["input1"])
 
         # Assert
         assert os.path.exists(storage.db_path)
@@ -151,8 +131,6 @@ class TestSQLiteSnapshotStorage:
 
         # Act
         loaded_data = storage.load_snapshot()
-        loaded_last_index = storage.load_last_index()
 
         # Assert
         assert loaded_data == []
-        assert loaded_last_index == -1

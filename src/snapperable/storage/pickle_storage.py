@@ -27,13 +27,12 @@ class PickleSnapshotStorage(SnapshotStorage[T]):
         """
         return os.path.abspath(self.file_path)
 
-    def store_snapshot(self, last_index: int, processed: list[T], inputs: list[Any]) -> None:
+    def store_snapshot(self, processed: list[T], inputs: list[Any]) -> None:
         """
-        Save the last processed index, processed results, and corresponding inputs atomically.
+        Save processed results and corresponding inputs atomically.
         This method ensures that existing processed items and inputs are loaded and appended before saving.
 
         Args:
-            last_index: The last processed index.
             processed: The list of processed items to save.
             inputs: The list of input values corresponding to the processed items.
         """
@@ -47,7 +46,6 @@ class PickleSnapshotStorage(SnapshotStorage[T]):
         combined_inputs = existing_inputs + inputs
 
         # Save the combined data atomically
-        data["last_index"] = last_index
         data["processed"] = combined_processed
         data["inputs"] = combined_inputs
         self._save_data(data)
@@ -61,16 +59,6 @@ class PickleSnapshotStorage(SnapshotStorage[T]):
         """
         data = self._load_data()
         return data.get("processed", [])
-
-    def load_last_index(self) -> int:
-        """
-        Load the last processed index from the pickle file.
-
-        Returns:
-            The last processed index, or -1 if not available.
-        """
-        data = self._load_data()
-        return data.get("last_index", -1)
 
     def load_inputs(self) -> list[Any]:
         """
