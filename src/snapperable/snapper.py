@@ -69,15 +69,25 @@ class Snapper(Generic[T]):
                 max_wait_time=max_wait_time,
             )
         self.batch_processor = batch_processor
+        
+        # Cache for materialized inputs (used to optimize load() after start())
+        self._cached_inputs: list[T] | None = None
 
     def start(self) -> None:
         """
         Start processing the iterable, saving progress to disk.
         Uses input-based tracking to handle dynamic iterables robustly.
+        
+        Note: This method caches the materialized iterable to optimize subsequent load() calls.
         """
+        # Materialize and cache the iterable for efficient load() calls
+        # This is done once during start() to avoid repeated materialization in load()
+        materialized_inputs = list(self.iterable)
+        self._cached_inputs = materialized_inputs
+        
         # Create snapshot tracker to manage processed inputs
         snapshot_tracker = SnapshotTracker(
-            iterable=self.iterable,
+            iterable=materialized_inputs,
             snapshot_storage=self.snapshot_storage
         )
         
@@ -101,8 +111,11 @@ class Snapper(Generic[T]):
         Load the processed results from the snapshot storage.
         Returns outputs that match the current input sequence.
         
-        Note: This method materializes the iterable to compare with stored inputs.
-        For large iterables, consider using load_all() if you don't need input matching.
+        Performance notes:
+        - If load() is called after start(), it uses cached inputs (fast, no materialization).
+        - If load() is called after program restart or interruption, the iterable must be 
+          materialized to compare with stored inputs (slower, unavoidable).
+        - For large iterables where input matching is not needed, consider using load_all().
         
         Returns:
             The list of processed results, or an empty list if no snapshot exists.
@@ -113,9 +126,14 @@ class Snapper(Generic[T]):
         if not stored_inputs:
             return self.snapshot_storage.load_snapshot()
         
-        # Materialize the iterable to compare with stored inputs
-        # This is necessary to determine which outputs match the current input sequence
-        current_inputs = list(self.iterable)
+        # Use cached inputs if available (after start()), otherwise materialize
+        if self._cached_inputs is not None:
+            current_inputs = self._cached_inputs
+        else:
+            # Materialize the iterable to compare with stored inputs
+            # This is necessary after program restart or interruption to determine 
+            # which outputs match the current input sequence
+            current_inputs = list(self.iterable)
         
         # If inputs match, return the outputs
         if self._inputs_match(current_inputs, stored_inputs):
