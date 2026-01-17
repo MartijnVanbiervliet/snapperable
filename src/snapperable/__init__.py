@@ -11,5 +11,5 @@ __all__ = [
     "PickleSnapshotStorage",
     "SQLiteSnapshotStorage",
     "BatchProcessor",
-    "SnapshotTracker",
+
 ]
