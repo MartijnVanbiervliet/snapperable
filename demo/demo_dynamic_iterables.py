@@ -50,7 +50,7 @@ def demo_growing_iterable():
 def demo_load_vs_load_all():
     """Demonstrate difference between load() and load_all()."""
     print("\n" + "="*60)
-    print("Demo 3: load() vs load_all()")
+    print("Demo 2: load() vs load_all()")
     print("="*60)
     
     with tempfile.TemporaryDirectory() as tmpdir:
@@ -84,7 +84,7 @@ def demo_load_vs_load_all():
 def demo_reordered_iterable():
     """Demonstrate handling of reordered iterables."""
     print("\n" + "="*60)
-    print("Demo 4: Reordered Iterable")
+    print("Demo 3: Reordered Iterable")
     print("="*60)
     
     with tempfile.TemporaryDirectory() as tmpdir:
