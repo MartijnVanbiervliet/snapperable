@@ -1,7 +1,6 @@
 """Unit tests for SnapshotTracker class."""
 
 from unittest.mock import MagicMock
-import pytest
 
 from snapperable.snapshot_tracker import SnapshotTracker
 
