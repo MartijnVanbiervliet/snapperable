@@ -64,9 +64,9 @@ class TestSnapshotTracker:
             if len(processed) >= 3:
                 break
         
-        # Create new tracker with same storage to verify persistence
-        tracker2 = SnapshotTracker([1, 2, 3, 4, 5], mock_storage)
+        # Configure storage to return processed items, then create new tracker to verify persistence
         mock_storage.load_inputs.return_value = [1, 2, 3]
+        tracker2 = SnapshotTracker([1, 2, 3, 4, 5], mock_storage)
         
         remaining = list(tracker2.get_remaining())
         assert remaining == [4, 5]
@@ -128,8 +128,8 @@ class TestSnapshotTracker:
             def __eq__(self, other):
                 return isinstance(other, UnhashableClass) and self.value == other.value
             
-            def __hash__(self):
-                raise TypeError("unhashable type")
+            # Mark class as unhashable in the standard Python way
+            __hash__ = None
         
         mock_storage = MagicMock()
         obj1 = UnhashableClass(1)
@@ -201,8 +201,8 @@ class TestSnapshotTracker:
     def test_mark_processed_with_unhashable_object(self):
         """Test that marking unhashable objects doesn't crash."""
         class UnhashableClass:
-            def __hash__(self):
-                raise TypeError("unhashable type")
+            # Mark class as unhashable in the standard Python way
+            __hash__ = None
         
         mock_storage = MagicMock()
         mock_storage.load_inputs.return_value = []

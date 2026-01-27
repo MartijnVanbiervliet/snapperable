@@ -93,9 +93,19 @@ class PickleSnapshotStorage(SnapshotStorage[T]):
 
     def _save_data(self, data: dict) -> None:
         """
-        Save all data to the pickle file.
+        Save all data to the pickle file atomically.
+        
+        Uses a temporary file and atomic rename to ensure data is not corrupted
+        if the process crashes during the write operation.
+        
         Args:
             data: A dictionary containing all data to store.
         """
-        with open(self.file_path, "wb") as f:
+        # Write to a temporary file first
+        temp_path = str(self.file_path) + ".tmp"
+        with open(temp_path, "wb") as f:
             pickle.dump(data, f)
+        
+        # Atomically replace the original file
+        # os.replace() is atomic on both Unix and Windows
+        os.replace(temp_path, self.file_path)
