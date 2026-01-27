@@ -73,32 +73,20 @@ class SQLiteSnapshotStorage(SnapshotStorage[T]):
         self._initialize_database()
         with sqlite3.connect(self.db_path) as conn:
             cursor = conn.cursor()
-            
-            # Begin transaction for atomic operation
-            cursor.execute("BEGIN TRANSACTION")
-            
-            try:
-                # Serialize and append processed results
-                serialized_outputs = [(pickle.dumps(item),) for item in processed]
-                cursor.executemany(
-                    "INSERT INTO processed_outputs (result) VALUES (?)",
-                    serialized_outputs,
-                )
-                
-                # Serialize and append inputs
-                serialized_inputs = [(pickle.dumps(item),) for item in inputs]
-                cursor.executemany(
-                    "INSERT INTO inputs (input_value) VALUES (?)",
-                    serialized_inputs,
-                )
-                
-                # Commit the transaction
-                conn.commit()
-            except Exception as e:
-                # Rollback on error
-                conn.rollback()
-                raise e
 
+            # Serialize and append processed results
+            serialized_outputs = [(pickle.dumps(item),) for item in processed]
+            cursor.executemany(
+                "INSERT INTO processed_outputs (result) VALUES (?)",
+                serialized_outputs,
+            )
+
+            # Serialize and append inputs
+            serialized_inputs = [(pickle.dumps(item),) for item in inputs]
+            cursor.executemany(
+                "INSERT INTO inputs (input_value) VALUES (?)",
+                serialized_inputs,
+            )
     def load_snapshot(self) -> list[T]:
         """
         Load all processed results from the database and deserialize them.
