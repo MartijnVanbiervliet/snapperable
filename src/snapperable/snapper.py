@@ -186,10 +186,23 @@ class Snapper(Generic[T]):
         all_outputs = self.snapshot_storage.load_all_outputs()
         
         # Create a mapping from stored inputs to outputs
+        # NOTE: If there are duplicate inputs in storage (which shouldn't happen
+        # with correct implementation, but could with external storage manipulation),
+        # only the last output for each duplicate input will be kept.
         input_to_output = {}
+        seen_inputs = set()
         for inp, out in zip(stored_inputs, all_outputs):
             try:
                 hashable_inp = SnapshotTracker._make_hashable(inp)
+                if hashable_inp in seen_inputs:
+                    import warnings
+                    warnings.warn(
+                        f"Duplicate input detected in storage: {inp}. "
+                        "Only the last output will be used.",
+                        UserWarning,
+                        stacklevel=2
+                    )
+                seen_inputs.add(hashable_inp)
                 input_to_output[hashable_inp] = out
             except TypeError:
                 # If not hashable, skip
