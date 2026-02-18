@@ -85,12 +85,16 @@ class Snapper(Generic[T]):
         """
         last_index = self.snapshot_storage.load_last_index()
 
-        # Optionally cache the iterable for optimization
-        # Note: This materializes the entire iterable into memory
-        if self.cache_iterable and self._cached_iterable is None:
+        # Determine which iterable to use: cached, create cache, or direct
+        if self._cached_iterable is not None:
+            # Use existing cache
+            items_to_process = self._cached_iterable
+        elif self.cache_iterable:
+            # Create cache and use it
             self._cached_iterable = list(self.iterable)
             items_to_process = self._cached_iterable
         else:
+            # Use iterable directly (no caching)
             items_to_process = self.iterable
 
         # Process from last_index + 1
