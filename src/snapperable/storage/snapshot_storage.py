@@ -1,7 +1,7 @@
 """Abstract base class for snapshot storage backends."""
 
 from abc import ABC, abstractmethod
-from typing import TypeVar, Generic
+from typing import TypeVar, Generic, Any
 
 T = TypeVar("T")
 
@@ -13,12 +13,12 @@ class SnapshotStorage(ABC, Generic[T]):
     """
 
     @abstractmethod
-    def store_snapshot(self, last_index: int, processed: list[T]) -> None:
+    def store_snapshot(self, processed: list[T], inputs: list[Any]) -> None:
         """
-        Save snapshot to storage.
+        Save snapshot to storage atomically.
         Args:
-            last_index: The last processed index.
             processed: The list of processed items to save.
+            inputs: The list of input values corresponding to the processed items.
         """
         pass
 
@@ -32,15 +32,6 @@ class SnapshotStorage(ABC, Generic[T]):
         pass
 
     @abstractmethod
-    def load_last_index(self) -> int:
-        """
-        Load only the last processed index, without loading the full processed results.
-        Returns:
-            The last processed index, or -1 if not available.
-        """
-        pass
-
-    @abstractmethod
     def get_storage_identifier(self) -> str:
         """
         Get a unique identifier for this storage backend.
@@ -49,5 +40,23 @@ class SnapshotStorage(ABC, Generic[T]):
         
         Returns:
             A unique string identifier for this storage (typically the absolute file path).
+        """
+        pass
+
+    @abstractmethod
+    def load_inputs(self) -> list[Any]:
+        """
+        Load all stored input values.
+        Returns:
+            A list of input values.
+        """
+        pass
+
+    @abstractmethod
+    def load_all_outputs(self) -> list[T]:
+        """
+        Load all processed outputs from storage, regardless of matching inputs.
+        Returns:
+            A list of all processed items.
         """
         pass

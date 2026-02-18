@@ -4,7 +4,7 @@ from pathlib import Path
 import sqlite3
 import pickle
 import os
-from typing import TypeVar
+from typing import TypeVar, Any
 
 from snapperable.storage.snapshot_storage import SnapshotStorage
 from snapperable.logger import logger
@@ -36,17 +36,17 @@ class SQLiteSnapshotStorage(SnapshotStorage[T]):
             cursor = conn.cursor()
             cursor.execute(
                 """
-                CREATE TABLE IF NOT EXISTS checkpoints (
+                CREATE TABLE IF NOT EXISTS processed_outputs (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    last_index INTEGER NOT NULL
+                    result BLOB NOT NULL
                 )
                 """
             )
             cursor.execute(
                 """
-                CREATE TABLE IF NOT EXISTS processed_outputs (
+                CREATE TABLE IF NOT EXISTS inputs (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    result BLOB NOT NULL
+                    input_value BLOB NOT NULL
                 )
                 """
             )
@@ -62,31 +62,31 @@ class SQLiteSnapshotStorage(SnapshotStorage[T]):
             os.remove(self.db_path)
         self._initialize_database()
 
-    def store_snapshot(self, last_index: int, processed: list[T]) -> None:
+    def store_snapshot(self, processed: list[T], inputs: list[Any]) -> None:
         """
-        Save the last processed index and append serialized results to the database.
+        Save serialized results and corresponding inputs atomically to the database.
 
         Args:
-            last_index: The last processed index.
             processed: The list of processed items to save.
+            inputs: The list of input values corresponding to the processed items.
         """
         self._initialize_database()
         with sqlite3.connect(self.db_path) as conn:
             cursor = conn.cursor()
-            # Update the last index
-            cursor.execute("DELETE FROM checkpoints")
-            cursor.execute(
-                "INSERT INTO checkpoints (last_index) VALUES (?)", (last_index,)
-            )
 
             # Serialize and append processed results
-            serialized_data = [(pickle.dumps(item),) for item in processed]
+            serialized_outputs = [(pickle.dumps(item),) for item in processed]
             cursor.executemany(
                 "INSERT INTO processed_outputs (result) VALUES (?)",
-                serialized_data,
+                serialized_outputs,
             )
-            conn.commit()
 
+            # Serialize and append inputs
+            serialized_inputs = [(pickle.dumps(item),) for item in inputs]
+            cursor.executemany(
+                "INSERT INTO inputs (input_value) VALUES (?)",
+                serialized_inputs,
+            )
     def load_snapshot(self) -> list[T]:
         """
         Load all processed results from the database and deserialize them.
@@ -110,21 +110,33 @@ class SQLiteSnapshotStorage(SnapshotStorage[T]):
             self._reset_database()
         return processed_items
 
-    def load_last_index(self) -> int:
+    def load_inputs(self) -> list[Any]:
         """
-        Load the last processed index from the database.
-
+        Load all stored input values.
         Returns:
-            The last processed index, or -1 if not available.
+            A list of input values.
         """
+        inputs: list[Any] = []
         try:
+            self._initialize_database()
             with sqlite3.connect(self.db_path) as conn:
                 cursor = conn.cursor()
-                cursor.execute(
-                    "SELECT last_index FROM checkpoints ORDER BY id DESC LIMIT 1"
-                )
-                row = cursor.fetchone()
-                return row[0] if row else -1
+                cursor.execute("SELECT input_value FROM inputs ORDER BY id")
+                rows = cursor.fetchall()
+                for row in rows:
+                    try:
+                        inputs.append(pickle.loads(row[0]))
+                    except (pickle.UnpicklingError, EOFError):
+                        logger.warning("Corrupted input data encountered and skipped.")
         except sqlite3.DatabaseError:
             self._reset_database()
-            return -1
+        return inputs
+
+    def load_all_outputs(self) -> list[T]:
+        """
+        Load all processed outputs from storage, regardless of matching inputs.
+        Returns:
+            A list of all processed items.
+        """
+        # This is the same as load_snapshot for SQLite
+        return self.load_snapshot()

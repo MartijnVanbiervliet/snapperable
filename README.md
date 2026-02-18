@@ -10,6 +10,7 @@ A Python library for robust processing of long-running iterables with automatic 
 - Process any iterable with a user-defined function
 - Automatic periodic checkpointing to disk
 - Resume processing from the last saved state
+- **Input-based tracking** for dynamic iterables that can grow or change
 - Simple API: `Snapper(iterable, fn).start()` and `.load()`
 - Multiple storage backends: SQLite and Pickle
 - Batch processing with configurable thresholds
@@ -31,6 +32,45 @@ snapper.start()
 
 # To load results after processing
 results = snapper.load()
+```
+
+## Dynamic Iterable Support
+
+Snapperable now supports dynamic iterables that can grow, shrink, or change between runs:
+
+```python
+from snapperable import Snapper
+from snapperable.storage.pickle_storage import PickleSnapshotStorage
+
+def process_item(item):
+    return item * 2
+
+storage = PickleSnapshotStorage("checkpoint.pkl")
+
+# First run: process initial items
+data_v1 = [1, 2, 3, 4, 5]
+with Snapper(data_v1, process_item, snapshot_storage=storage) as snapper:
+    snapper.start()
+
+# Second run: add more items to the iterable
+data_v2 = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]  # New items added
+with Snapper(data_v2, process_item, snapshot_storage=storage) as snapper:
+    snapper.start()  # Only processes items 6-10
+    results = snapper.load()  # Returns all 10 results
+```
+
+### Load Methods
+
+Snapperable provides two methods for retrieving results:
+
+- **`load()`**: Returns outputs that match the current input sequence
+- **`load_all()`**: Returns all stored outputs, regardless of current inputs
+
+```python
+# After processing [1, 2, 3, 4, 5]
+with Snapper([1, 2, 3], process_item, snapshot_storage=storage) as snapper:
+    matching_results = snapper.load()      # [2, 4, 6] - matches current inputs
+    all_results = snapper.load_all()       # [2, 4, 6, 8, 10] - all stored outputs
 ```
 
 ## Storage Classes
