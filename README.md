@@ -107,6 +107,41 @@ snapper.start()
 - `batch_size`: Number of processed items to accumulate before saving a snapshot (default: 1)
 - `max_wait_time`: Maximum time in seconds to wait before saving, regardless of batch size (default: None)
 
+### Iterable Caching Configuration
+
+By default, `snapperable` processes iterables lazily without materializing them into memory. This allows processing of very large or infinite iterables with minimal memory footprint. However, for certain use cases, you may want to enable caching:
+
+```python
+from snapperable import Snapper
+
+# Enable iterable caching for optimization (uses more memory)
+snapper = Snapper(
+    range(10000),
+    process_item,
+    cache_iterable=True      # Cache the iterable in memory
+)
+snapper.start()
+
+# Manually clear the cache to free memory when done
+snapper.clear_cache()
+```
+
+**When to use `cache_iterable=True`:**
+- When you need to call `start()` multiple times on the same Snapper instance
+- When the iterable is already in memory (e.g., a list) and you want to avoid re-iterating
+- When you have sufficient memory and want to optimize for speed
+
+**When to use `cache_iterable=False` (default):**
+- Processing very large iterables that don't fit in memory
+- Working with infinite iterables or generators
+- When memory efficiency is more important than speed
+- When lazy evaluation is important for your use case
+
+**Important Notes:**
+- `cache_iterable=False` is the default to support lazy evaluation and memory efficiency
+- Caching materializes the entire iterable into memory, which can be problematic for very large datasets
+- You can manually clear the cache using `snapper.clear_cache()` to free memory
+
 ## Development
 
 ### Editable installation

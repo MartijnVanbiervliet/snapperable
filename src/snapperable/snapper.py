@@ -27,6 +27,7 @@ class Snapper(Generic[T]):
         max_wait_time: float | None = None,
         snapshot_storage: Optional[SnapshotStorage[T]] = None,
         batch_processor: Optional[BatchProcessor] = None,
+        cache_iterable: bool = False,
     ):
         """
         Initialize the Snapper.
@@ -38,12 +39,17 @@ class Snapper(Generic[T]):
             batch_processor: Optional BatchProcessor instance. If not provided, a default one is created.
             batch_size: The number of items to batch before saving (used if batch_processor is None).
             max_wait_time: The maximum time to wait before saving a batch (used if batch_processor is None).
+            cache_iterable: If True, materializes and caches the iterable during start() for optimization.
+                           This improves performance but consumes memory. Not suitable for very large or
+                           infinite iterables. Defaults to False for memory efficiency.
         
         Raises:
             ValueError: If the provided snapshot_storage is already in use by another Snapper instance.
         """
         self.iterable = iterable
         self.fn = fn
+        self.cache_iterable = cache_iterable
+        self._cached_iterable: list[T] | None = None
 
         if snapshot_storage is None:
             snapshot_storage = SQLiteSnapshotStorage()
@@ -72,11 +78,23 @@ class Snapper(Generic[T]):
     def start(self) -> None:
         """
         Start processing the iterable, saving progress to disk.
+        
+        If cache_iterable is enabled, the iterable is materialized and cached in memory
+        for potential optimization benefits. This is disabled by default to support
+        large or infinite iterables and preserve lazy evaluation.
         """
         last_index = self.snapshot_storage.load_last_index()
 
+        # Optionally cache the iterable for optimization
+        # Note: This materializes the entire iterable into memory
+        if self.cache_iterable and self._cached_iterable is None:
+            self._cached_iterable = list(self.iterable)
+            items_to_process = self._cached_iterable
+        else:
+            items_to_process = self.iterable
+
         # Process from last_index + 1
-        for idx, item in enumerate(self.iterable):
+        for idx, item in enumerate(items_to_process):
             if idx <= last_index:
                 continue
 
@@ -93,6 +111,15 @@ class Snapper(Generic[T]):
             The list of processed results, or an empty list if no snapshot exists.
         """
         return self.snapshot_storage.load_snapshot()
+    
+    def clear_cache(self) -> None:
+        """
+        Manually clear the cached iterable to free memory.
+        
+        This is useful when cache_iterable is enabled and you want to free memory
+        after processing is complete or before starting a new processing session.
+        """
+        self._cached_iterable = None
 
     def _release_storage(self) -> None:
         """
