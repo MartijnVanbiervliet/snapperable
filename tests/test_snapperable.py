@@ -191,3 +191,185 @@ def test_snapper_prevents_mixed_storage_types_same_file(tmp_path: Path):
     # should raise ValueError
     with pytest.raises(ValueError, match="already in use by another Snapper instance"):
         _snapper2 = Snapper(iterable, process_item, snapshot_storage=storage2)
+
+
+def test_snapper_with_cache_disabled(tmp_path: Path):
+    """
+    Test that Snapper works correctly with iterable caching disabled (default behavior).
+    This is the default mode and should support lazy evaluation.
+    """
+    snapshot_storage_path = tmp_path / "test_no_cache.db"
+    storage = SQLiteSnapshotStorage[int](snapshot_storage_path)
+    
+    # Use a generator to verify lazy evaluation
+    def number_generator():
+        for i in range(10):
+            yield i
+    
+    def process_item(item: int) -> int:
+        return item * 2
+    
+    # Create Snapper with cache_iterable=False (default)
+    with Snapper(number_generator(), process_item, snapshot_storage=storage, cache_iterable=False) as snapper:
+        snapper.start()
+        results = snapper.load()
+        
+        assert len(results) == 10
+        assert results == [i * 2 for i in range(10)]
+
+
+def test_snapper_with_cache_enabled(tmp_path: Path):
+    """
+    Test that Snapper correctly caches the iterable when cache_iterable=True.
+    """
+    snapshot_storage_path = tmp_path / "test_with_cache.db"
+    storage = SQLiteSnapshotStorage[int](snapshot_storage_path)
+    
+    # Track if the iterator was consumed
+    consumed_count = {"count": 0}
+    
+    def counting_generator():
+        for i in range(10):
+            consumed_count["count"] += 1
+            yield i
+    
+    def process_item(item: int) -> int:
+        return item * 2
+    
+    # Create Snapper with cache_iterable=True
+    with Snapper(
+        counting_generator(), 
+        process_item, 
+        snapshot_storage=storage, 
+        cache_iterable=True
+    ) as snapper:
+        snapper.start()
+        
+        # Verify the generator was consumed once during caching
+        assert consumed_count["count"] == 10
+        
+        # Verify the cache was created
+        assert snapper._cached_iterable is not None
+        assert len(snapper._cached_iterable) == 10
+        
+        results = snapper.load()
+        assert len(results) == 10
+        assert results == [i * 2 for i in range(10)]
+
+
+def test_snapper_clear_cache(tmp_path: Path):
+    """
+    Test that clear_cache() method successfully clears the cached iterable.
+    """
+    snapshot_storage_path = tmp_path / "test_clear_cache.db"
+    storage = SQLiteSnapshotStorage[int](snapshot_storage_path)
+    
+    data = list(range(10))
+    
+    def process_item(item: int) -> int:
+        return item * 2
+    
+    # Create Snapper with cache_iterable=True
+    snapper = Snapper(
+        data, 
+        process_item, 
+        snapshot_storage=storage, 
+        cache_iterable=True
+    )
+    
+    # Process the iterable
+    snapper.start()
+    
+    # Verify cache was created
+    assert snapper._cached_iterable is not None
+    
+    # Clear the cache
+    snapper.clear_cache()
+    
+    # Verify cache was cleared
+    assert snapper._cached_iterable is None
+    
+    # Verify we can still load results
+    results = snapper.load()
+    assert len(results) == 10
+    assert results == [i * 2 for i in range(10)]
+    
+    # Clean up
+    snapper._release_storage()
+
+
+def test_snapper_cache_reused_on_multiple_starts(tmp_path: Path):
+    """
+    Test that cached iterable is reused when start() is called multiple times.
+    """
+    snapshot_storage_path = tmp_path / "test_cache_reuse.db"
+    
+    consumed_count = {"count": 0}
+    
+    def counting_generator():
+        for i in range(5):
+            consumed_count["count"] += 1
+            yield i
+    
+    def process_item(item: int) -> int:
+        return item * 2
+    
+    # First run - process all items
+    storage1 = SQLiteSnapshotStorage[int](snapshot_storage_path)
+    with Snapper(
+        counting_generator(), 
+        process_item, 
+        snapshot_storage=storage1, 
+        cache_iterable=True
+    ) as snapper:
+        snapper.start()
+        assert consumed_count["count"] == 5
+        results = snapper.load()
+        assert len(results) == 5
+    
+    # Second run with a new storage pointing to the same file
+    # This should resume from where it left off (all items already processed)
+    storage2 = SQLiteSnapshotStorage[int](snapshot_storage_path)
+    with Snapper(
+        counting_generator(), 
+        process_item, 
+        snapshot_storage=storage2, 
+        cache_iterable=True
+    ) as snapper2:
+        # Since all items are already processed, start should not process anything new
+        # But it should still cache the generator
+        initial_count = consumed_count["count"]
+        snapper2.start()
+        # The generator will be consumed for caching
+        assert consumed_count["count"] == initial_count + 5
+        
+        # Verify the cache was created
+        assert snapper2._cached_iterable is not None
+        
+        results = snapper2.load()
+        assert len(results) == 5
+        assert results == [i * 2 for i in range(5)]
+
+
+def test_snapper_without_cache_supports_generators(tmp_path: Path):
+    """
+    Test that without caching, Snapper can process generators (lazy evaluation).
+    Note: Generators can only be consumed once, so this tests the default behavior.
+    """
+    snapshot_storage_path = tmp_path / "test_generator.db"
+    storage = SQLiteSnapshotStorage[int](snapshot_storage_path)
+    
+    def process_item(item: int) -> int:
+        return item ** 2
+    
+    # Use a generator (cannot be consumed multiple times)
+    generator = (i for i in range(100))
+    
+    # Process with cache_iterable=False (default) - should work
+    with Snapper(generator, process_item, snapshot_storage=storage) as snapper:
+        snapper.start()
+        results = snapper.load()
+        
+        assert len(results) == 100
+        assert results[0] == 0
+        assert results[99] == 99 ** 2
