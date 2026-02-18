@@ -82,6 +82,9 @@ class Snapper(Generic[T]):
         """
         # Materialize and cache the iterable for efficient load() calls
         # This is done once during start() to avoid repeated materialization in load()
+        # NOTE: This materializes the entire iterable into memory, which could be problematic
+        # for very large or infinite iterables. This defeats lazy evaluation and memory efficiency.
+        # See GitHub issue for potential future improvement to make this configurable.
         materialized_inputs = list(self.iterable)
         self._cached_inputs = materialized_inputs
         
