@@ -1,7 +1,5 @@
-import pytest
 import time
-import threading
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 from snapperable.batch_processor import BatchProcessor
 from snapperable.snapper import Snapper
 from snapperable.storage.pickle_storage import PickleSnapshotStorage

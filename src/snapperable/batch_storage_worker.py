@@ -1,6 +1,6 @@
 """Background worker for asynchronous batch storage."""
 
-from typing import Any, List, Tuple
+from typing import Any, List
 import queue
 import threading
 

@@ -2,7 +2,6 @@ from typing import Any, List, Tuple
 import time
 
 from snapperable.storage.snapshot_storage import SnapshotStorage
-from snapperable.batch_storage_worker import BatchStorageWorker
 from snapperable.logger import logger
 
 
