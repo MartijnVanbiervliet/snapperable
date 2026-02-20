@@ -2,7 +2,7 @@
 
 import pickle
 import os
-from typing import TypeVar
+from typing import TypeVar, Any
 
 from snapperable.storage.snapshot_storage import SnapshotStorage
 from snapperable.logger import logger
@@ -27,22 +27,28 @@ class PickleSnapshotStorage(SnapshotStorage[T]):
         """
         return os.path.abspath(self.file_path)
 
-    def store_snapshot(self, last_index: int, processed: list[T]) -> None:
+    def store_snapshot(self, processed: list[T], inputs: list[Any]) -> None:
         """
-        Save the last processed index and all processed results to a pickle file.
-        This method ensures that existing processed items are loaded and appended before saving.
+        Save processed results and corresponding inputs atomically.
+        This method ensures that existing processed items and inputs are loaded and appended before saving.
 
         Args:
-            last_index: The last processed index.
             processed: The list of processed items to save.
+            inputs: The list of input values corresponding to the processed items.
         """
-        # Load existing processed items
-        existing_processed = self.load_snapshot()
+        # Load existing data
+        data = self._load_data()
+        existing_processed = data.get("processed", [])
+        existing_inputs = data.get("inputs", [])
+        
+        # Append new data
         combined_processed = existing_processed + processed
+        combined_inputs = existing_inputs + inputs
 
-        # Save the combined data
-        with open(self.file_path, "wb") as f:
-            pickle.dump({"last_index": last_index, "processed": combined_processed}, f)
+        # Save the combined data atomically
+        data["processed"] = combined_processed
+        data["inputs"] = combined_inputs
+        self._save_data(data)
 
     def load_snapshot(self) -> list[T]:
         """
@@ -51,25 +57,55 @@ class PickleSnapshotStorage(SnapshotStorage[T]):
         Returns:
             A list of processed items.
         """
-        try:
-            with open(self.file_path, "rb") as f:
-                data = pickle.load(f)
-                return data.get("processed", [])
-        except (FileNotFoundError, pickle.UnpicklingError, EOFError):
-            logger.warning(f"Pickle file '{self.file_path}' is corrupted or missing.")
-            return []
+        data = self._load_data()
+        return data.get("processed", [])
 
-    def load_last_index(self) -> int:
+    def load_inputs(self) -> list[Any]:
         """
-        Load the last processed index from the pickle file.
-
+        Load all stored input values.
         Returns:
-            The last processed index, or -1 if not available.
+            A list of input values.
+        """
+        data = self._load_data()
+        return data.get("inputs", [])
+
+    def load_all_outputs(self) -> list[T]:
+        """
+        Load all processed outputs from storage, regardless of matching inputs.
+        Returns:
+            A list of all processed items.
+        """
+        # This is the same as load_snapshot for Pickle
+        return self.load_snapshot()
+
+    def _load_data(self) -> dict:
+        """
+        Load all data from the pickle file.
+        Returns:
+            A dictionary containing all stored data.
         """
         try:
             with open(self.file_path, "rb") as f:
-                data = pickle.load(f)
-                return data.get("last_index", -1)
+                return pickle.load(f)
         except (FileNotFoundError, pickle.UnpicklingError, EOFError):
             logger.warning(f"Pickle file '{self.file_path}' is corrupted or missing.")
-            return -1
+            return {}
+
+    def _save_data(self, data: dict) -> None:
+        """
+        Save all data to the pickle file atomically.
+        
+        Uses a temporary file and atomic rename to ensure data is not corrupted
+        if the process crashes during the write operation.
+        
+        Args:
+            data: A dictionary containing all data to store.
+        """
+        # Write to a temporary file first
+        temp_path = str(self.file_path) + ".tmp"
+        with open(temp_path, "wb") as f:
+            pickle.dump(data, f)
+        
+        # Atomically replace the original file
+        # os.replace() is atomic on both Unix and Windows
+        os.replace(temp_path, self.file_path)

@@ -18,8 +18,8 @@ def test_add_item(batch_processor):
     """
     Test that items can be added to the batch and the batch size increases accordingly.
     """
-    batch_processor.add_item("item1")
-    batch_processor.add_item("item2")
+    batch_processor.add_item("item1", input_value="input1")
+    batch_processor.add_item("item2", input_value="input2")
     assert len(batch_processor.current_batch) == 2
 
 
@@ -27,9 +27,9 @@ def test_batch_threshold(batch_processor, mock_snapshot_storage):
     """
     Test that the batch is flushed and processed when the batch size threshold is reached.
     """
-    batch_processor.add_item("item1")
-    batch_processor.add_item("item2")
-    batch_processor.add_item("item3")
+    batch_processor.add_item("item1", input_value="input1")
+    batch_processor.add_item("item2", input_value="input2")
+    batch_processor.add_item("item3", input_value="input3")
 
     # Shutdown to wait for background thread to complete
     batch_processor.shutdown()
@@ -43,8 +43,8 @@ def test_process_batch(batch_processor, mock_snapshot_storage):
     """
     Test the flush method to ensure it processes and clears the current batch.
     """
-    batch_processor.add_item("item1")
-    batch_processor.add_item("item2")
+    batch_processor.add_item("item1", input_value="input1")
+    batch_processor.add_item("item2", input_value="input2")
     batch_processor.flush()
 
     # Shutdown to wait for background thread to complete
@@ -63,18 +63,18 @@ def test_different_batch_sizes(mock_snapshot_storage):
     processor_large = BatchProcessor(storage_backend=mock_snapshot_storage, batch_size=5)
 
     # Small batch size
-    processor_small.add_item("item1")
-    processor_small.add_item("item2")
+    processor_small.add_item("item1", input_value="input1")
+    processor_small.add_item("item2", input_value="input2")
     processor_small.shutdown()
     mock_snapshot_storage.store_snapshot.assert_called_once()
 
     # Large batch size
-    processor_large.add_item("item1")
-    processor_large.add_item("item2")
+    processor_large.add_item("item1", input_value="input1")
+    processor_large.add_item("item2", input_value="input2")
     mock_snapshot_storage.store_snapshot.assert_called_once()
-    processor_large.add_item("item3")
-    processor_large.add_item("item4")
-    processor_large.add_item("item5")
+    processor_large.add_item("item3", input_value="input3")
+    processor_large.add_item("item4", input_value="input4")
+    processor_large.add_item("item5", input_value="input5")
     processor_large.shutdown()
     assert mock_snapshot_storage.store_snapshot.call_count == 2
 
@@ -85,11 +85,11 @@ def test_wait_time_functionality(mock_snapshot_storage):
     """
     processor = BatchProcessor(storage_backend=mock_snapshot_storage, batch_size=10, max_wait_time=1)
 
-    processor.add_item("item1")
+    processor.add_item("item1", input_value="input1")
     assert mock_snapshot_storage.store_snapshot.call_count == 0
     time.sleep(1.5)  # Wait for the batch to be processed due to timeout
 
-    processor.add_item("item2")  # Trigger the check for wait time exceeded
+    processor.add_item("item2", input_value="input2")  # Trigger the check for wait time exceeded
     processor.shutdown()
     mock_snapshot_storage.store_snapshot.assert_called_once()
     assert len(processor.current_batch) == 0
@@ -100,11 +100,10 @@ def test_wait_time_not_exceeded():
     Test that the batch is not flushed when the wait time is not exceeded.
     """
     mock_storage = MagicMock()
-    mock_storage.load_last_index.return_value = -1
     processor = BatchProcessor(storage_backend=mock_storage, batch_size=10, max_wait_time=1)
-    processor.add_item("item3")
+    processor.add_item("item3", input_value="input3")
     time.sleep(0.5)
-    processor.add_item("item4")  # Should not trigger flush yet
+    processor.add_item("item4", input_value="input4")  # Should not trigger flush yet
     
     # Verify no flush happened yet
     assert mock_storage.store_snapshot.call_count == 0
@@ -114,5 +113,3 @@ def test_wait_time_not_exceeded():
     processor.shutdown()
     # Should have flushed once
     assert mock_storage.store_snapshot.call_count == 1
-
-

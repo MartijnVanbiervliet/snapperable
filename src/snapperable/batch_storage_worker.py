@@ -1,6 +1,6 @@
 """Background worker for asynchronous batch storage."""
 
-from typing import Any, List
+from typing import Any, List, Tuple
 import queue
 import threading
 
@@ -25,22 +25,22 @@ class BatchStorageWorker:
             storage_backend: The storage backend to delegate saving to.
         """
         self.storage_backend = storage_backend
-        self._save_queue: queue.Queue[tuple[int, List[Any]] | None] = queue.Queue()
+        self._save_queue: queue.Queue[tuple[List[Any], List[Any]] | None] = queue.Queue()
         self._worker_thread = threading.Thread(target=self._save_worker, daemon=True)
         self._shutdown = False
         self._worker_thread.start()
 
-    def enqueue_batch(self, last_index: int, batch: List[Any]) -> None:
+    def enqueue_batch(self, outputs: List[Any], inputs: List[Any]) -> None:
         """
         Enqueue a batch for background saving.
 
         Args:
-            last_index: The last processed index after this batch.
-            batch: The list of items to save.
+            outputs: The list of processed outputs to save.
+            inputs: The list of corresponding inputs.
         """
-        logger.info("Enqueueing batch of size %d for background saving.", len(batch))
-        self._save_queue.put((last_index, batch))
-        logger.debug("Batch enqueued with last index: %d", last_index)
+        logger.info("Enqueueing batch of size %d for background saving.", len(outputs))
+        self._save_queue.put((outputs, inputs))
+        logger.debug("Batch enqueued.")
 
     def _save_worker(self) -> None:
         """
@@ -54,11 +54,11 @@ class BatchStorageWorker:
                 self._save_queue.task_done()
                 break
             
-            last_index, batch = item
+            outputs, inputs = item
             try:
-                logger.info("Background thread storing batch of size %d.", len(batch))
-                self.storage_backend.store_snapshot(last_index, batch)
-                logger.debug("Background thread stored batch with last index: %d", last_index)
+                logger.info("Background thread storing batch of size %d.", len(outputs))
+                self.storage_backend.store_snapshot(outputs, inputs)
+                logger.debug("Background thread stored batch.")
             except Exception as e:
                 logger.error("Error storing snapshot in background thread: %s", e)
             finally:
