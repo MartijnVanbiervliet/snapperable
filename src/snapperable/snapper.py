@@ -80,34 +80,38 @@ class Snapper(Generic[T]):
         
         Note: This method caches the materialized iterable to optimize subsequent load() calls.
         """
-        # Materialize and cache the iterable for efficient load() calls
-        # This is done once during start() to avoid repeated materialization in load()
-        # NOTE: This materializes the entire iterable into memory, which could be problematic
-        # for very large or infinite iterables. This defeats lazy evaluation and memory efficiency.
-        # See GitHub issue for potential future improvement to make this configurable.
-        materialized_inputs = list(self.iterable)
-        self._cached_inputs = materialized_inputs
-        
-        # Create snapshot tracker to manage processed inputs
-        snapshot_tracker = SnapshotTracker(
-            iterable=materialized_inputs,
-            snapshot_storage=self.snapshot_storage
-        )
-        
-        # Process remaining items
-        for item in snapshot_tracker.get_remaining():
-            # Process the item
-            result = self.fn(item)
+        try:
+            # Materialize and cache the iterable for efficient load() calls
+            # This is done once during start() to avoid repeated materialization in load()
+            # NOTE: This materializes the entire iterable into memory, which could be problematic
+            # for very large or infinite iterables. This defeats lazy evaluation and memory efficiency.
+            # See GitHub issue for potential future improvement to make this configurable.
+            materialized_inputs = list(self.iterable)
+            self._cached_inputs = materialized_inputs
             
-            # Add to batch processor with input value
-            # The batch processor will store both input and output atomically
-            self.batch_processor.add_item(result, input_value=item)
+            # Create snapshot tracker to manage processed inputs
+            snapshot_tracker = SnapshotTracker(
+                iterable=materialized_inputs,
+                snapshot_storage=self.snapshot_storage
+            )
             
-            # Mark as processed
-            snapshot_tracker.mark_processed(item)
+            # Process remaining items
+            for item in snapshot_tracker.get_remaining():
+                # Process the item
+                result = self.fn(item)
+                
+                # Add to batch processor with input value
+                # The batch processor will store both input and output atomically
+                self.batch_processor.add_item(result, input_value=item)
+                
+                # Mark as processed
+                snapshot_tracker.mark_processed(item)
 
-        # Ensure all remaining items are saved
-        self.batch_processor.flush()
+            # Ensure all remaining items are saved
+            self.batch_processor.flush()
+        finally:
+            # Wait for background thread to finish saving, even if there's an exception
+            self.batch_processor.shutdown()
 
     def load(self) -> list[T]:
         """
@@ -253,7 +257,9 @@ class Snapper(Generic[T]):
         exc_tb: TracebackType | None,
     ) -> bool:
         """
-        Context manager exit. Releases the storage.
+        Context manager exit. Shuts down the batch processor and releases the storage.
         """
+        # shutdown() is idempotent, so it's safe to call even if already called in start()
+        self.batch_processor.shutdown()
         self._release_storage()
         return False
