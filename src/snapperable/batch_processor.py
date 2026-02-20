@@ -30,9 +30,6 @@ class BatchProcessor:
         self.max_wait_time = max_wait_time
         self.current_batch: List[Tuple[Any, Any]] = []  # List of (input, output) tuples
         self.last_flush_time = None
-        
-        # Delegate background storage to BatchStorageWorker
-        self._storage_worker = BatchStorageWorker(storage_backend)
 
     def add_item(self, item: Any, input_value: Any) -> None:
         """
@@ -75,20 +72,11 @@ class BatchProcessor:
             logger.debug("Batch cleared after flush.")
 
         if batch_to_store:
-            # Separate inputs and outputs
-            inputs = [inp for inp, _ in batch_to_store]
-            outputs = [out for _, out in batch_to_store]
-            
-            # Delegate to storage worker for background saving
-            self._storage_worker.enqueue_batch(outputs, inputs)
+            logger.info("Storing batch of size %d.", len(batch_to_store))
+            last_index = self.storage_backend.load_last_index() + len(batch_to_store)
+            self.storage_backend.store_snapshot(last_index, batch_to_store)
             self._update_last_flush_time()
-
-    def shutdown(self) -> None:
-        """
-        Gracefully shutdown the background worker thread.
-        Waits for all queued items to be processed before stopping.
-        """
-        self._storage_worker.shutdown()
+            logger.debug("Batch stored with last index: %d", last_index)
 
 
     def _is_wait_time_exceeded(self) -> bool:
