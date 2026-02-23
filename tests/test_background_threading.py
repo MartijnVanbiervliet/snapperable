@@ -1,6 +1,8 @@
 import time
+import pytest
 from unittest.mock import MagicMock
 from snapperable.batch_processor import BatchProcessor
+from snapperable.batch_storage_worker import BatchStorageWorker
 from snapperable.snapper import Snapper
 from snapperable.storage.pickle_storage import PickleSnapshotStorage
 from pathlib import Path
@@ -199,3 +201,19 @@ def test_shutdown_idempotent():
     
     # Should not raise any errors
     assert mock_storage.store_snapshot.call_count == 1
+
+
+def test_enqueue_after_shutdown_raises_error():
+    """
+    Test that enqueuing a batch after shutdown raises RuntimeError.
+    """
+    mock_storage = MagicMock()
+    
+    worker = BatchStorageWorker(storage_backend=mock_storage)
+    
+    # Shutdown the worker
+    worker.shutdown()
+    
+    # Attempting to enqueue after shutdown should raise RuntimeError
+    with pytest.raises(RuntimeError, match="Cannot enqueue batch after BatchStorageWorker has been shut down"):
+        worker.enqueue_batch(["output1"], ["input1"])

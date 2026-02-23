@@ -28,6 +28,7 @@ class BatchStorageWorker:
         self._save_queue: queue.Queue[tuple[List[Any], List[Any]] | None] = queue.Queue()
         self._worker_thread = threading.Thread(target=self._save_worker, daemon=True)
         self._shutdown = False
+        self._shutdown_lock = threading.Lock()
         self._worker_thread.start()
 
     def enqueue_batch(self, outputs: List[Any], inputs: List[Any]) -> None:
@@ -37,7 +38,17 @@ class BatchStorageWorker:
         Args:
             outputs: The list of processed outputs to save.
             inputs: The list of corresponding inputs.
+            
+        Raises:
+            RuntimeError: If called after shutdown() has been invoked.
         """
+        with self._shutdown_lock:
+            if self._shutdown:
+                raise RuntimeError(
+                    "Cannot enqueue batch after BatchStorageWorker has been shut down. "
+                    "Items will not be processed."
+                )
+        
         logger.info("Enqueueing batch of size %d for background saving.", len(outputs))
         self._save_queue.put((outputs, inputs))
         logger.debug("Batch enqueued.")
@@ -68,9 +79,14 @@ class BatchStorageWorker:
         """
         Gracefully shutdown the background worker thread.
         Waits for all queued items to be processed before stopping.
+        
+        This method is idempotent and thread-safe - it's safe to call multiple times
+        or concurrently from different threads.
         """
-        if self._shutdown:
-            return
+        with self._shutdown_lock:
+            if self._shutdown:
+                return
+            self._shutdown = True
         
         logger.info("Shutting down BatchStorageWorker.")
         # Send sentinel value to stop the worker
@@ -79,5 +95,4 @@ class BatchStorageWorker:
         self._save_queue.join()
         # Wait for worker thread to finish
         self._worker_thread.join()
-        self._shutdown = True
         logger.info("BatchStorageWorker shutdown complete.")
