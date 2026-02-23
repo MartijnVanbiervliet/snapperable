@@ -16,6 +16,7 @@ class BatchProcessor:
         storage_backend: SnapshotStorage[Any],
         batch_size: int,
         max_wait_time: float | None = None,
+        max_retries: int = 3,
     ):
         """
         Initialize the BatchProcessor.
@@ -24,6 +25,7 @@ class BatchProcessor:
             storage_backend: The storage backend to delegate processing to.
             batch_size: The number of items to batch before processing.
             max_wait_time: The maximum time to wait before processing a batch. If None, no time limit is enforced.
+            max_retries: Maximum number of retry attempts for failed storage operations. Default is 3.
         """
         self.storage_backend = storage_backend
         self.batch_size = batch_size
@@ -32,7 +34,7 @@ class BatchProcessor:
         self.last_flush_time = None
         
         # Delegate background storage to BatchStorageWorker
-        self._storage_worker = BatchStorageWorker(storage_backend)
+        self._storage_worker = BatchStorageWorker(storage_backend, max_retries=max_retries)
 
     def add_item(self, item: Any, input_value: Any) -> None:
         """

@@ -107,7 +107,7 @@ def test_multiple_batches_saved_in_correct_order():
 
 def test_exception_in_save_worker_does_not_crash():
     """
-    Test that exceptions in the background worker are caught and logged.
+    Test that temporary exceptions are retried and eventually succeed.
     """
     mock_storage = MagicMock()
     
@@ -115,22 +115,78 @@ def test_exception_in_save_worker_does_not_crash():
     
     def failing_store(outputs, inputs):
         call_count[0] += 1
-        if call_count[0] == 1:
+        if call_count[0] <= 2:  # Fail first 2 attempts
             raise Exception("Simulated storage error")
+        # Succeed on 3rd attempt
     
     mock_storage.store_snapshot = failing_store
     
-    processor = BatchProcessor(storage_backend=mock_storage, batch_size=1)
+    processor = BatchProcessor(storage_backend=mock_storage, batch_size=1, max_retries=3)
     
-    # Add items
+    # Add item
     processor.add_item("output1", input_value="input1")
-    processor.add_item("output2", input_value="input2")
     
-    # Should not crash, should complete gracefully
+    # Should succeed after retries
     processor.shutdown()
     
-    # Verify that both saves were attempted
-    assert call_count[0] == 2
+    # Verify that it retried and eventually succeeded (3 attempts total)
+    assert call_count[0] == 3
+
+
+def test_retry_exhaustion_raises_exception():
+    """
+    Test that if all retries are exhausted, the exception is raised.
+    """
+    mock_storage = MagicMock()
+    
+    call_count = [0]
+    
+    def always_failing_store(outputs, inputs):
+        call_count[0] += 1
+        raise Exception("Persistent storage error")
+    
+    mock_storage.store_snapshot = always_failing_store
+    
+    processor = BatchProcessor(storage_backend=mock_storage, batch_size=1, max_retries=2)
+    
+    # Add item
+    processor.add_item("output1", input_value="input1")
+    
+    # Should raise exception after exhausting retries
+    import pytest
+    with pytest.raises(Exception, match="Persistent storage error"):
+        processor.shutdown()
+    
+    # Verify it tried max_retries + 1 times (1 initial + 2 retries = 3 total)
+    assert call_count[0] == 3
+
+
+def test_retry_with_zero_retries():
+    """
+    Test that max_retries=0 means no retries, only one attempt.
+    """
+    mock_storage = MagicMock()
+    
+    call_count = [0]
+    
+    def failing_store(outputs, inputs):
+        call_count[0] += 1
+        raise Exception("Storage error")
+    
+    mock_storage.store_snapshot = failing_store
+    
+    processor = BatchProcessor(storage_backend=mock_storage, batch_size=1, max_retries=0)
+    
+    # Add item
+    processor.add_item("output1", input_value="input1")
+    
+    # Should raise exception immediately without retries
+    import pytest
+    with pytest.raises(Exception, match="Storage error"):
+        processor.shutdown()
+    
+    # Verify it only tried once (no retries)
+    assert call_count[0] == 1
 
 
 def test_snapper_with_slow_storage_backend(tmp_path: Path):

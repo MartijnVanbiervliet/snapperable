@@ -26,6 +26,7 @@ class Snapper(Generic[T]):
         fn: Callable[[T], Any],
         batch_size: int = 1,
         max_wait_time: float | None = None,
+        max_retries: int = 3,
         snapshot_storage: Optional[SnapshotStorage[T]] = None,
         batch_processor: Optional[BatchProcessor] = None,
     ):
@@ -39,6 +40,7 @@ class Snapper(Generic[T]):
             batch_processor: Optional BatchProcessor instance. If not provided, a default one is created.
             batch_size: The number of items to batch before saving (used if batch_processor is None).
             max_wait_time: The maximum time to wait before saving a batch (used if batch_processor is None).
+            max_retries: Maximum number of retry attempts for failed storage operations (used if batch_processor is None). Default is 3.
         
         Raises:
             ValueError: If the provided snapshot_storage is already in use by another Snapper instance.
@@ -67,6 +69,7 @@ class Snapper(Generic[T]):
                 storage_backend=self.snapshot_storage,
                 batch_size=batch_size,
                 max_wait_time=max_wait_time,
+                max_retries=max_retries,
             )
         self.batch_processor = batch_processor
         
