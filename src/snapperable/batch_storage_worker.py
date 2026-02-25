@@ -55,7 +55,7 @@ class BatchStorageWorker:
                     "Items will not be processed."
                 )
 
-        logger.info("Enqueueing batch of size %d for background saving.", len(outputs))
+        logger.debug("Enqueueing batch of size %d for background saving.", len(outputs))
         self._save_queue.put((outputs, inputs))
         logger.debug("Batch enqueued.")
 
@@ -88,7 +88,7 @@ class BatchStorageWorker:
                             len(outputs),
                         )
                     else:
-                        logger.info(
+                        logger.debug(
                             "Background thread storing batch of size %d.", len(outputs)
                         )
 
@@ -135,7 +135,7 @@ class BatchStorageWorker:
                 return
             self._shutdown = True
 
-        logger.info("Shutting down BatchStorageWorker.")
+        logger.debug("Shutting down BatchStorageWorker.")
         # Send sentinel value to stop the worker
         self._save_queue.put(None)
         # Wait for all queued items to be processed

@@ -47,7 +47,9 @@ class BatchProcessor:
             item: The output item to be added to the batch.
             input_value: The corresponding input value for input-based tracking.
         """
-        logger.debug("Adding item to batch: %s", item)
+        logger.debug(
+            "Adding item to batch: input_value=%s, output_value=%s", input_value, item
+        )
         should_flush = False
         self.current_batch.append((input_value, item))
         logger.debug("Current batch size: %d", len(self.current_batch))
