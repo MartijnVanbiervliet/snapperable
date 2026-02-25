@@ -11,7 +11,7 @@ from snapperable.logger import logger
 class BatchStorageWorker:
     """
     Manages background thread for asynchronous storage of batches.
-    
+
     This worker runs a dedicated thread that consumes from a queue and
     delegates storage operations to a backend, allowing the main processing
     loop to continue without blocking on I/O.
@@ -28,7 +28,9 @@ class BatchStorageWorker:
         """
         self.storage_backend = storage_backend
         self.max_retries = max_retries
-        self._save_queue: queue.Queue[tuple[List[Any], List[Any]] | None] = queue.Queue()
+        self._save_queue: queue.Queue[tuple[List[Any], List[Any]] | None] = (
+            queue.Queue()
+        )
         self._worker_thread = threading.Thread(target=self._save_worker, daemon=True)
         self._shutdown = False
         self._shutdown_lock = threading.Lock()
@@ -42,7 +44,7 @@ class BatchStorageWorker:
         Args:
             outputs: The list of processed outputs to save.
             inputs: The list of corresponding inputs.
-            
+
         Raises:
             RuntimeError: If called after shutdown() has been invoked.
         """
@@ -52,7 +54,7 @@ class BatchStorageWorker:
                     "Cannot enqueue batch after BatchStorageWorker has been shut down. "
                     "Items will not be processed."
                 )
-        
+
         logger.info("Enqueueing batch of size %d for background saving.", len(outputs))
         self._save_queue.put((outputs, inputs))
         logger.debug("Batch enqueued.")
@@ -61,7 +63,7 @@ class BatchStorageWorker:
         """
         Background worker thread that processes the save queue.
         Runs continuously until a sentinel value (None) is received.
-        
+
         Retries failed storage operations up to max_retries times. If all retries
         fail, stores the exception to be re-raised during shutdown.
         """
@@ -71,53 +73,60 @@ class BatchStorageWorker:
                 # Sentinel value to stop the worker
                 self._save_queue.task_done()
                 break
-            
+
             outputs, inputs = item
             last_exception = None
-            
+
             # Retry loop
             for attempt in range(self.max_retries + 1):
                 try:
                     if attempt > 0:
                         logger.warning(
                             "Retrying storage operation (attempt %d/%d) for batch of size %d",
-                            attempt, self.max_retries, len(outputs)
+                            attempt,
+                            self.max_retries,
+                            len(outputs),
                         )
                     else:
-                        logger.info("Background thread storing batch of size %d.", len(outputs))
-                    
+                        logger.info(
+                            "Background thread storing batch of size %d.", len(outputs)
+                        )
+
                     self.storage_backend.store_snapshot(outputs, inputs)
                     logger.debug("Background thread stored batch.")
                     last_exception = None
                     break  # Success - exit retry loop
-                    
+
                 except Exception as e:
                     last_exception = e
                     if attempt < self.max_retries:
                         logger.warning(
                             "Storage operation failed (attempt %d/%d): %s",
-                            attempt + 1, self.max_retries + 1, e
+                            attempt + 1,
+                            self.max_retries + 1,
+                            e,
                         )
                     else:
                         logger.error(
                             "Storage operation failed after %d attempts: %s",
-                            self.max_retries + 1, e
+                            self.max_retries + 1,
+                            e,
                         )
-            
+
             # If all retries failed, store the exception to be raised during shutdown
             if last_exception is not None:
                 self._failed_exception = last_exception
-            
+
             self._save_queue.task_done()
 
     def shutdown(self) -> None:
         """
         Gracefully shutdown the background worker thread.
         Waits for all queued items to be processed before stopping.
-        
+
         This method is idempotent and thread-safe - it's safe to call multiple times
         or concurrently from different threads.
-        
+
         Raises:
             Exception: If any storage operation failed after all retries were exhausted.
         """
@@ -125,7 +134,7 @@ class BatchStorageWorker:
             if self._shutdown:
                 return
             self._shutdown = True
-        
+
         logger.info("Shutting down BatchStorageWorker.")
         # Send sentinel value to stop the worker
         self._save_queue.put(None)
@@ -134,7 +143,7 @@ class BatchStorageWorker:
         # Wait for worker thread to finish
         self._worker_thread.join()
         logger.info("BatchStorageWorker shutdown complete.")
-        
+
         # If there was a failure, raise the exception now
         if self._failed_exception is not None:
             raise self._failed_exception

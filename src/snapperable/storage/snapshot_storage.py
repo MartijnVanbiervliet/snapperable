@@ -37,7 +37,7 @@ class SnapshotStorage(ABC, Generic[T]):
         Get a unique identifier for this storage backend.
         This is used to prevent multiple Snapper instances from using storage
         that points to the same underlying file/database.
-        
+
         Returns:
             A unique string identifier for this storage (typically the absolute file path).
         """

@@ -41,7 +41,7 @@ class Snapper(Generic[T]):
             batch_size: The number of items to batch before saving (used if batch_processor is None).
             max_wait_time: The maximum time to wait before saving a batch (used if batch_processor is None).
             max_retries: Maximum number of retry attempts for failed storage operations (used if batch_processor is None). Default is 3.
-        
+
         Raises:
             ValueError: If the provided snapshot_storage is already in use by another Snapper instance.
         """
@@ -50,7 +50,7 @@ class Snapper(Generic[T]):
 
         if snapshot_storage is None:
             snapshot_storage = SQLiteSnapshotStorage()
-        
+
         # Check if this storage file path is already in use
         storage_identifier = snapshot_storage.get_storage_identifier()
         with Snapper._storage_lock:
@@ -60,7 +60,7 @@ class Snapper(Generic[T]):
                     "Each Snapper must have its own snapshot_storage instance to avoid race conditions."
                 )
             Snapper._active_storages.add(storage_identifier)
-        
+
         self.snapshot_storage = snapshot_storage
         self._storage_identifier = storage_identifier
 
@@ -72,7 +72,7 @@ class Snapper(Generic[T]):
                 max_retries=max_retries,
             )
         self.batch_processor = batch_processor
-        
+
         # Cache for materialized inputs (used to optimize load() after start())
         self._cached_inputs: list[T] | None = None
 
@@ -80,7 +80,7 @@ class Snapper(Generic[T]):
         """
         Start processing the iterable, saving progress to disk.
         Uses input-based tracking to handle dynamic iterables robustly.
-        
+
         Note: This method caches the materialized iterable to optimize subsequent load() calls.
         """
         try:
@@ -91,22 +91,21 @@ class Snapper(Generic[T]):
             # See GitHub issue for potential future improvement to make this configurable.
             materialized_inputs = list(self.iterable)
             self._cached_inputs = materialized_inputs
-            
+
             # Create snapshot tracker to manage processed inputs
             snapshot_tracker = SnapshotTracker(
-                iterable=materialized_inputs,
-                snapshot_storage=self.snapshot_storage
+                iterable=materialized_inputs, snapshot_storage=self.snapshot_storage
             )
-            
+
             # Process remaining items
             for item in snapshot_tracker.get_remaining():
                 # Process the item
                 result = self.fn(item)
-                
+
                 # Add to batch processor with input value
                 # The batch processor will store both input and output atomically
                 self.batch_processor.add_item(result, input_value=item)
-                
+
                 # Mark as processed
                 snapshot_tracker.mark_processed(item)
 
@@ -120,81 +119,85 @@ class Snapper(Generic[T]):
         """
         Load the processed results from the snapshot storage.
         Returns outputs that match the current input sequence.
-        
+
         Performance notes:
         - If load() is called after start(), it uses cached inputs (fast, no materialization).
-        - If load() is called after program restart or interruption, the iterable must be 
+        - If load() is called after program restart or interruption, the iterable must be
           materialized to compare with stored inputs (slower, unavoidable).
         - For large iterables where input matching is not needed, consider using load_all().
-        
+
         Returns:
             The list of processed results, or an empty list if no snapshot exists.
         """
         stored_inputs = self.snapshot_storage.load_inputs()
-        
+
         # If no stored inputs, return all outputs (backward compatibility)
         if not stored_inputs:
             return self.snapshot_storage.load_snapshot()
-        
+
         # Use cached inputs if available (after start()), otherwise materialize
         if self._cached_inputs is not None:
             current_inputs = self._cached_inputs
         else:
             # Materialize the iterable to compare with stored inputs
-            # This is necessary after program restart or interruption to determine 
+            # This is necessary after program restart or interruption to determine
             # which outputs match the current input sequence
             current_inputs = list(self.iterable)
-        
+
         # If inputs match, return the outputs
         if self._inputs_match(current_inputs, stored_inputs):
             return self.snapshot_storage.load_snapshot()
-        
+
         # Otherwise, return outputs for matching inputs only
         return self._get_matching_outputs(current_inputs, stored_inputs)
-    
+
     def load_all(self) -> list[T]:
         """
         Load all processed outputs from the snapshot storage,
         regardless of whether they match the current input sequence.
-        
+
         Returns:
             The list of all processed results, or an empty list if no snapshot exists.
         """
         return self.snapshot_storage.load_all_outputs()
-    
-    def _inputs_match(self, current_inputs: list[Any], stored_inputs: list[Any]) -> bool:
+
+    def _inputs_match(
+        self, current_inputs: list[Any], stored_inputs: list[Any]
+    ) -> bool:
         """
         Check if current inputs match stored inputs.
-        
+
         Args:
             current_inputs: Current input values.
             stored_inputs: Stored input values.
-            
+
         Returns:
             True if inputs match, False otherwise.
         """
         if len(current_inputs) != len(stored_inputs):
             return False
-        
+
         for current, stored in zip(current_inputs, stored_inputs):
             if current != stored:
                 return False
-        
+
         return True
-    
-    def _get_matching_outputs(self, current_inputs: list[Any], stored_inputs: list[Any]) -> list[T]:
+
+    def _get_matching_outputs(
+        self, current_inputs: list[Any], stored_inputs: list[Any]
+    ) -> list[T]:
         """
         Get outputs that match the current inputs.
-        
+
         Args:
             current_inputs: Current input values.
             stored_inputs: Stored input values.
-            
+
         Returns:
             List of outputs for matching inputs.
         """
         all_outputs = self.snapshot_storage.load_all_outputs()
-        
+
         # Create a mapping from stored inputs to outputs
         # NOTE: If there are duplicate inputs in storage (which shouldn't happen
         # with correct implementation, but could with external storage manipulation),
@@ -206,18 +209,19 @@ class Snapper(Generic[T]):
                 hashable_inp = SnapshotTracker._make_hashable(inp)
                 if hashable_inp in seen_inputs:
                     import warnings
+
                     warnings.warn(
                         f"Duplicate input detected in storage: {inp}. "
                         "Only the last output will be used.",
                         UserWarning,
-                        stacklevel=2
+                        stacklevel=2,
                     )
                 seen_inputs.add(hashable_inp)
                 input_to_output[hashable_inp] = out
             except TypeError:
                 # If not hashable, skip
                 pass
-        
+
         # Get outputs for current inputs
         matching_outputs = []
         for inp in current_inputs:
@@ -228,7 +232,7 @@ class Snapper(Generic[T]):
             except TypeError:
                 # If not hashable, skip
                 pass
-        
+
         return matching_outputs
 
     def _release_storage(self) -> None:
@@ -244,7 +248,7 @@ class Snapper(Generic[T]):
         Cleanup when the Snapper instance is destroyed.
         """
         # Only release if initialization completed successfully
-        if hasattr(self, '_storage_identifier'):
+        if hasattr(self, "_storage_identifier"):
             self._release_storage()
 
     def __enter__(self):

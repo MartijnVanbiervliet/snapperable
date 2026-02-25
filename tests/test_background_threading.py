@@ -16,38 +16,38 @@ def test_processing_continues_during_slow_save():
     # Create a mock storage that simulates slow saves
     mock_storage = MagicMock()
     save_count = [0]
-    
+
     def slow_store_snapshot(outputs, inputs):
         save_count[0] += 1
         time.sleep(0.5)  # Simulate slow I/O
-    
+
     mock_storage.store_snapshot.side_effect = slow_store_snapshot
-    
+
     processor = BatchProcessor(storage_backend=mock_storage, batch_size=2)
-    
+
     start_time = time.time()
-    
+
     # Add 6 items, which will create 3 batches
     for i in range(6):
         processor.add_item(f"output{i}", input_value=f"input{i}")
-    
+
     # Time after adding all items (before shutdown)
     time_after_adding = time.time()
-    
+
     processor.shutdown()
     end_time = time.time()
-    
+
     # The time to add all items should be much less than 3 * 0.5 seconds
     # because the saves happen in the background
     time_to_add = time_after_adding - start_time
     assert time_to_add < 0.5, f"Processing should not block on I/O, took {time_to_add}s"
-    
+
     # However, shutdown should wait for all saves to complete
     total_time = end_time - start_time
     # With 3 batches and 0.5s per save, total should be at least 1.5s
     # (though they may overlap slightly depending on timing)
     assert total_time >= 1.0, f"Shutdown should wait for all saves, took {total_time}s"
-    
+
     # Verify all batches were saved
     assert save_count[0] == 3
 
@@ -58,22 +58,22 @@ def test_graceful_shutdown_ensures_all_items_saved():
     """
     mock_storage = MagicMock()
     save_count = []
-    
+
     def track_saves(outputs, inputs):
         save_count.append(len(outputs))
         time.sleep(0.1)  # Small delay to ensure items are queued
-    
+
     mock_storage.store_snapshot.side_effect = track_saves
-    
+
     processor = BatchProcessor(storage_backend=mock_storage, batch_size=2)
-    
+
     # Add items rapidly
     for i in range(10):
         processor.add_item(f"output{i}", input_value=f"input{i}")
-    
+
     # Shutdown and verify all items were saved
     processor.shutdown()
-    
+
     assert mock_storage.store_snapshot.call_count == 5  # 10 items / 2 batch_size
     assert sum(save_count) == 10  # All 10 items should be saved
 
@@ -84,20 +84,20 @@ def test_multiple_batches_saved_in_correct_order():
     """
     mock_storage = MagicMock()
     saved_data = []
-    
+
     def capture_saves(outputs, inputs):
         saved_data.append((outputs.copy(), inputs.copy()))
-    
+
     mock_storage.store_snapshot = capture_saves
-    
+
     processor = BatchProcessor(storage_backend=mock_storage, batch_size=2)
-    
+
     # Add 6 items
     for i in range(6):
         processor.add_item(f"output{i}", input_value=f"input{i}")
-    
+
     processor.shutdown()
-    
+
     # Verify saves happened in order
     assert len(saved_data) == 3
     assert saved_data[0] == (["output0", "output1"], ["input0", "input1"])
@@ -110,25 +110,27 @@ def test_exception_in_save_worker_does_not_crash():
     Test that temporary exceptions are retried and eventually succeed.
     """
     mock_storage = MagicMock()
-    
+
     call_count = [0]
-    
+
     def failing_store(outputs, inputs):
         call_count[0] += 1
         if call_count[0] <= 2:  # Fail first 2 attempts
             raise Exception("Simulated storage error")
         # Succeed on 3rd attempt
-    
+
     mock_storage.store_snapshot = failing_store
-    
-    processor = BatchProcessor(storage_backend=mock_storage, batch_size=1, max_retries=3)
-    
+
+    processor = BatchProcessor(
+        storage_backend=mock_storage, batch_size=1, max_retries=3
+    )
+
     # Add item
     processor.add_item("output1", input_value="input1")
-    
+
     # Should succeed after retries
     processor.shutdown()
-    
+
     # Verify that it retried and eventually succeeded (3 attempts total)
     assert call_count[0] == 3
 
@@ -138,25 +140,28 @@ def test_retry_exhaustion_raises_exception():
     Test that if all retries are exhausted, the exception is raised.
     """
     mock_storage = MagicMock()
-    
+
     call_count = [0]
-    
+
     def always_failing_store(outputs, inputs):
         call_count[0] += 1
         raise Exception("Persistent storage error")
-    
+
     mock_storage.store_snapshot = always_failing_store
-    
-    processor = BatchProcessor(storage_backend=mock_storage, batch_size=1, max_retries=2)
-    
+
+    processor = BatchProcessor(
+        storage_backend=mock_storage, batch_size=1, max_retries=2
+    )
+
     # Add item
     processor.add_item("output1", input_value="input1")
-    
+
     # Should raise exception after exhausting retries
     import pytest
+
     with pytest.raises(Exception, match="Persistent storage error"):
         processor.shutdown()
-    
+
     # Verify it tried max_retries + 1 times (1 initial + 2 retries = 3 total)
     assert call_count[0] == 3
 
@@ -166,25 +171,28 @@ def test_retry_with_zero_retries():
     Test that max_retries=0 means no retries, only one attempt.
     """
     mock_storage = MagicMock()
-    
+
     call_count = [0]
-    
+
     def failing_store(outputs, inputs):
         call_count[0] += 1
         raise Exception("Storage error")
-    
+
     mock_storage.store_snapshot = failing_store
-    
-    processor = BatchProcessor(storage_backend=mock_storage, batch_size=1, max_retries=0)
-    
+
+    processor = BatchProcessor(
+        storage_backend=mock_storage, batch_size=1, max_retries=0
+    )
+
     # Add item
     processor.add_item("output1", input_value="input1")
-    
+
     # Should raise exception immediately without retries
     import pytest
+
     with pytest.raises(Exception, match="Storage error"):
         processor.shutdown()
-    
+
     # Verify it only tried once (no retries)
     assert call_count[0] == 1
 
@@ -194,32 +202,32 @@ def test_snapper_with_slow_storage_backend(tmp_path: Path):
     Integration test: Verify that Snapper works correctly with slow storage backend.
     """
     snapshot_storage_path = tmp_path / "test.pkl"
-    
+
     # Create a custom storage that adds delays
     class SlowPickleStorage(PickleSnapshotStorage):
         def store_snapshot(self, processed, inputs):
             time.sleep(0.2)  # Simulate slow I/O
             super().store_snapshot(processed, inputs)
-    
+
     storage = SlowPickleStorage(str(snapshot_storage_path))
-    
+
     def process_item(item):
         return item * 2
-    
+
     data = list(range(5))
-    
+
     start_time = time.time()
-    
+
     with Snapper(data, process_item, snapshot_storage=storage, batch_size=2) as snapper:
         snapper.start()
-    
+
     end_time = time.time()
-    
+
     # Verify results are correct
     result = storage.load_snapshot()
     expected = [i * 2 for i in data]
     assert result == expected
-    
+
     # With background threading, processing should be faster than
     # if we waited for each save sequentially
     total_time = end_time - start_time
@@ -232,12 +240,12 @@ def test_worker_thread_is_daemon():
     Test that the worker thread is a daemon thread so it doesn't prevent program exit.
     """
     mock_storage = MagicMock()
-    
+
     processor = BatchProcessor(storage_backend=mock_storage, batch_size=10)
-    
+
     # Verify the worker thread is a daemon
     assert processor._storage_worker._worker_thread.daemon is True
-    
+
     processor.shutdown()
 
 
@@ -246,15 +254,15 @@ def test_shutdown_idempotent():
     Test that calling shutdown multiple times is safe and idempotent.
     """
     mock_storage = MagicMock()
-    
+
     processor = BatchProcessor(storage_backend=mock_storage, batch_size=1)
     processor.add_item("output1", input_value="input1")
-    
+
     # Call shutdown multiple times
     processor.shutdown()
     processor.shutdown()
     processor.shutdown()
-    
+
     # Should not raise any errors
     assert mock_storage.store_snapshot.call_count == 1
 
@@ -264,12 +272,15 @@ def test_enqueue_after_shutdown_raises_error():
     Test that enqueuing a batch after shutdown raises RuntimeError.
     """
     mock_storage = MagicMock()
-    
+
     worker = BatchStorageWorker(storage_backend=mock_storage)
-    
+
     # Shutdown the worker
     worker.shutdown()
-    
+
     # Attempting to enqueue after shutdown should raise RuntimeError
-    with pytest.raises(RuntimeError, match="Cannot enqueue batch after BatchStorageWorker has been shut down"):
+    with pytest.raises(
+        RuntimeError,
+        match="Cannot enqueue batch after BatchStorageWorker has been shut down",
+    ):
         worker.enqueue_batch(["output1"], ["input1"])

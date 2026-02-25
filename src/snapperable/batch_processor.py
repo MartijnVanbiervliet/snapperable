@@ -32,9 +32,11 @@ class BatchProcessor:
         self.max_wait_time = max_wait_time
         self.current_batch: List[Tuple[Any, Any]] = []  # List of (input, output) tuples
         self.last_flush_time = None
-        
+
         # Delegate background storage to BatchStorageWorker
-        self._storage_worker = BatchStorageWorker(storage_backend, max_retries=max_retries)
+        self._storage_worker = BatchStorageWorker(
+            storage_backend, max_retries=max_retries
+        )
 
     def add_item(self, item: Any, input_value: Any) -> None:
         """
@@ -55,11 +57,11 @@ class BatchProcessor:
             self._update_last_flush_time()
 
         if self._is_wait_time_exceeded():
-            logger.info("Wait time exceeded. Triggering flush.")
+            logger.debug("Wait time exceeded. Triggering flush.")
             should_flush = True
 
         if self._is_batch_full():
-            logger.info("Batch is full. Triggering flush.")
+            logger.debug("Batch is full. Triggering flush.")
             should_flush = True
 
         if should_flush:
@@ -69,7 +71,7 @@ class BatchProcessor:
         """
         Flush the current batch by enqueueing it for background saving. Clears the batch.
         """
-        logger.info("Flushing current batch.")
+        logger.debug("Flushing current batch.")
         batch_to_store = None
         if self.current_batch:
             batch_to_store = self.current_batch
@@ -80,7 +82,7 @@ class BatchProcessor:
             # Separate inputs and outputs
             inputs = [inp for inp, _ in batch_to_store]
             outputs = [out for _, out in batch_to_store]
-            
+
             # Delegate to storage worker for background saving
             self._storage_worker.enqueue_batch(outputs, inputs)
             self._update_last_flush_time()
@@ -91,7 +93,6 @@ class BatchProcessor:
         Waits for all queued items to be processed before stopping.
         """
         self._storage_worker.shutdown()
-
 
     def _is_wait_time_exceeded(self) -> bool:
         """
