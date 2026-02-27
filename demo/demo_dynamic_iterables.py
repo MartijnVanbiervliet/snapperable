@@ -9,7 +9,6 @@ This script shows how Snapperable now handles:
 """
 
 import os
-import sys
 import argparse
 import tempfile
 from snapperable import Snapper
