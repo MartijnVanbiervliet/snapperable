@@ -28,7 +28,7 @@ class BatchStorageWorker:
         """
         self.storage_backend = storage_backend
         self.max_retries = max_retries
-        self._save_queue: queue.Queue[tuple[List[Any], List[Any]] | None] = (
+        self._save_queue: queue.Queue[tuple[List[Any], List[Any], str] | None] = (
             queue.Queue()
         )
         self._worker_thread = threading.Thread(target=self._save_worker, daemon=True)
@@ -37,13 +37,14 @@ class BatchStorageWorker:
         self._failed_exception: Optional[Exception] = None
         self._worker_thread.start()
 
-    def enqueue_batch(self, outputs: List[Any], inputs: List[Any]) -> None:
+    def enqueue_batch(self, outputs: List[Any], inputs: List[Any], batch_id: str) -> None:
         """
         Enqueue a batch for background saving.
 
         Args:
             outputs: The list of processed outputs to save.
             inputs: The list of corresponding inputs.
+            batch_id: Unique identifier for the batch for tracing in logs.
 
         Raises:
             RuntimeError: If called after shutdown() has been invoked.
@@ -55,9 +56,9 @@ class BatchStorageWorker:
                     "Items will not be processed."
                 )
 
-        logger.debug("Enqueueing batch of size %d for background saving.", len(outputs))
-        self._save_queue.put((outputs, inputs))
-        logger.debug("Batch enqueued.")
+        logger.debug("Enqueueing batch of size %d for background saving (batch_id=%s).", len(outputs), batch_id)
+        self._save_queue.put((outputs, inputs, batch_id))
+        logger.debug("Batch enqueued (batch_id=%s).", batch_id)
 
     def _save_worker(self) -> None:
         """
@@ -74,7 +75,7 @@ class BatchStorageWorker:
                 self._save_queue.task_done()
                 break
 
-            outputs, inputs = item
+            outputs, inputs, batch_id = item
             last_exception = None
 
             # Retry loop
@@ -82,18 +83,19 @@ class BatchStorageWorker:
                 try:
                     if attempt > 0:
                         logger.warning(
-                            "Retrying storage operation (attempt %d/%d) for batch of size %d",
+                            "Retrying storage operation (attempt %d/%d) for batch of size %d (batch_id=%s)",
                             attempt,
                             self.max_retries,
                             len(outputs),
+                            batch_id,
                         )
                     else:
                         logger.debug(
-                            "Background thread storing batch of size %d.", len(outputs)
+                            "Background thread storing batch of size %d (batch_id=%s).", len(outputs), batch_id
                         )
 
                     self.storage_backend.store_snapshot(outputs, inputs)
-                    logger.debug("Background thread stored batch.")
+                    logger.debug("Background thread stored batch (batch_id=%s).", batch_id)
                     last_exception = None
                     break  # Success - exit retry loop
 
@@ -101,15 +103,17 @@ class BatchStorageWorker:
                     last_exception = e
                     if attempt < self.max_retries:
                         logger.warning(
-                            "Storage operation failed (attempt %d/%d): %s",
+                            "Storage operation failed (attempt %d/%d) (batch_id=%s): %s",
                             attempt + 1,
                             self.max_retries + 1,
+                            batch_id,
                             e,
                         )
                     else:
                         logger.error(
-                            "Storage operation failed after %d attempts: %s",
+                            "Storage operation failed after %d attempts (batch_id=%s): %s",
                             self.max_retries + 1,
+                            batch_id,
                             e,
                         )
 

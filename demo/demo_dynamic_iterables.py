@@ -9,6 +9,8 @@ This script shows how Snapperable now handles:
 """
 
 import os
+import sys
+import argparse
 import tempfile
 from snapperable import Snapper
 from snapperable.storage.sqlite_storage import SQLiteSnapshotStorage
@@ -124,15 +126,83 @@ def demo_reordered_iterable():
         print("✓ Outputs match the new order without reprocessing!")
 
 
+def demo_larger_batch_size():
+    """Demonstrate handling of larger batch sizes."""
+    print("\n" + "=" * 60)
+    print("Demo 4: Larger Batch Size")
+    print("=" * 60)
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        storage_path = os.path.join(tmpdir, "demo5.pkl")
+
+        def process(x):
+            print(f"Processing {x}...")
+            return x * 2
+
+        # Process items with a larger batch size
+        print("\nProcessing [0, 1, 2, 3, 4] with batch size of 3")
+        data = list(range(5))
+        storage = SQLiteSnapshotStorage(storage_path)
+        with Snapper(
+            data,
+            process,
+            snapshot_storage=storage,
+            batch_size=3,
+            max_wait_time=None,
+        ) as snapper:
+            snapper.start()
+            result = snapper.load()
+        print(f"Results: {result}")
+        print("✓ Items were processed in batches of 3!")
+
+
 if __name__ == "__main__":
+    # Available demos
+    demos = {
+        "growing": demo_growing_iterable,
+        "load": demo_load_vs_load_all,
+        "reorder": demo_reordered_iterable,
+        "batch": demo_larger_batch_size,
+    }
+
+    # Setup argument parser
+    parser = argparse.ArgumentParser(
+        description="Demonstrate dynamic iterable support in Snapperable",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Available demos:
+  growing  - Growing iterable (adding new items)
+  load     - load() vs load_all() differences
+  reorder  - Reordered iterable handling
+  batch    - Larger batch size processing
+  all      - Run all demos
+
+Examples:
+  python demo_dynamic_iterables.py growing
+  python demo_dynamic_iterables.py all
+        """,
+    )
+    parser.add_argument(
+        "demo",
+        nargs="?",
+        default="all",
+        choices=list(demos.keys()) + ["all"],
+        help="Which demo to run (default: all)",
+    )
+
+    args = parser.parse_args()
+
     print("\n" + "=" * 60)
     print("Snapperable Dynamic Iterable Support Demo")
     print("=" * 60)
 
-    demo_growing_iterable()
-    demo_load_vs_load_all()
-    demo_reordered_iterable()
+    # Run selected demo(s)
+    if args.demo == "all":
+        for demo_func in demos.values():
+            demo_func()
+    else:
+        demos[args.demo]()
 
     print("\n" + "=" * 60)
-    print("All demos completed successfully!")
+    print("Demo completed successfully!")
     print("=" * 60 + "\n")

@@ -1,5 +1,6 @@
 from typing import Any, List, Tuple
 import time
+import uuid
 
 from snapperable.storage.snapshot_storage import SnapshotStorage
 from snapperable.batch_storage_worker import BatchStorageWorker
@@ -73,12 +74,13 @@ class BatchProcessor:
         """
         Flush the current batch by enqueueing it for background saving. Clears the batch.
         """
-        logger.debug("Flushing current batch.")
+        batch_id = str(uuid.uuid4())[:8]
+        logger.debug("Flushing current batch (batch_id=%s).", batch_id)
         batch_to_store = None
         if self.current_batch:
             batch_to_store = self.current_batch
             self.current_batch = []
-            logger.debug("Batch cleared after flush.")
+            logger.debug("Batch cleared after flush (batch_id=%s).", batch_id)
 
         if batch_to_store:
             # Separate inputs and outputs
@@ -86,7 +88,7 @@ class BatchProcessor:
             outputs = [out for _, out in batch_to_store]
 
             # Delegate to storage worker for background saving
-            self._storage_worker.enqueue_batch(outputs, inputs)
+            self._storage_worker.enqueue_batch(outputs, inputs, batch_id)
             self._update_last_flush_time()
 
     def shutdown(self) -> None:
