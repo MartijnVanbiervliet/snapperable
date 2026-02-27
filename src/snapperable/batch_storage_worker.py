@@ -37,7 +37,9 @@ class BatchStorageWorker:
         self._failed_exception: Optional[Exception] = None
         self._worker_thread.start()
 
-    def enqueue_batch(self, outputs: List[Any], inputs: List[Any], batch_id: str) -> None:
+    def enqueue_batch(
+        self, outputs: List[Any], inputs: List[Any], batch_id: str = "undefined"
+    ) -> None:
         """
         Enqueue a batch for background saving.
 
@@ -56,7 +58,11 @@ class BatchStorageWorker:
                     "Items will not be processed."
                 )
 
-        logger.debug("Enqueueing batch of size %d for background saving (batch_id=%s).", len(outputs), batch_id)
+        logger.debug(
+            "Enqueueing batch of size %d for background saving (batch_id=%s).",
+            len(outputs),
+            batch_id,
+        )
         self._save_queue.put((outputs, inputs, batch_id))
         logger.debug("Batch enqueued (batch_id=%s).", batch_id)
 
@@ -91,11 +97,15 @@ class BatchStorageWorker:
                         )
                     else:
                         logger.debug(
-                            "Background thread storing batch of size %d (batch_id=%s).", len(outputs), batch_id
+                            "Background thread storing batch of size %d (batch_id=%s).",
+                            len(outputs),
+                            batch_id,
                         )
 
                     self.storage_backend.store_snapshot(outputs, inputs)
-                    logger.debug("Background thread stored batch (batch_id=%s).", batch_id)
+                    logger.debug(
+                        "Background thread stored batch (batch_id=%s).", batch_id
+                    )
                     last_exception = None
                     break  # Success - exit retry loop
 
