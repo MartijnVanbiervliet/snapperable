@@ -87,6 +87,9 @@ class SQLiteSnapshotStorage(SnapshotStorage[T]):
                 "INSERT INTO inputs (input_value) VALUES (?)",
                 serialized_inputs,
             )
+
+            logger.debug("Stored batch of %d items to SQLite database.", len(processed))
+
     def load_snapshot(self) -> list[T]:
         """
         Load all processed results from the database and deserialize them.
@@ -106,6 +109,10 @@ class SQLiteSnapshotStorage(SnapshotStorage[T]):
                         processed_items.append(pickle.loads(row[0]))
                     except (pickle.UnpicklingError, EOFError):
                         logger.warning("Corrupted data encountered and skipped.")
+                logger.debug(
+                    "Loaded %d processed items from SQLite database.",
+                    len(processed_items),
+                )
         except sqlite3.DatabaseError:
             self._reset_database()
         return processed_items
@@ -128,6 +135,7 @@ class SQLiteSnapshotStorage(SnapshotStorage[T]):
                         inputs.append(pickle.loads(row[0]))
                     except (pickle.UnpicklingError, EOFError):
                         logger.warning("Corrupted input data encountered and skipped.")
+                logger.debug("Loaded %d input items from SQLite database.", len(inputs))
         except sqlite3.DatabaseError:
             self._reset_database()
         return inputs

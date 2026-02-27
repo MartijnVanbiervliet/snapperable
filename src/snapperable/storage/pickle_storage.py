@@ -40,7 +40,7 @@ class PickleSnapshotStorage(SnapshotStorage[T]):
         data = self._load_data()
         existing_processed = data.get("processed", [])
         existing_inputs = data.get("inputs", [])
-        
+
         # Append new data
         combined_processed = existing_processed + processed
         combined_inputs = existing_inputs + inputs
@@ -94,10 +94,10 @@ class PickleSnapshotStorage(SnapshotStorage[T]):
     def _save_data(self, data: dict) -> None:
         """
         Save all data to the pickle file atomically.
-        
+
         Uses a temporary file and atomic rename to ensure data is not corrupted
         if the process crashes during the write operation.
-        
+
         Args:
             data: A dictionary containing all data to store.
         """
@@ -105,7 +105,7 @@ class PickleSnapshotStorage(SnapshotStorage[T]):
         temp_path = str(self.file_path) + ".tmp"
         with open(temp_path, "wb") as f:
             pickle.dump(data, f)
-        
+
         # Atomically replace the original file
         # os.replace() is atomic on both Unix and Windows
         os.replace(temp_path, self.file_path)
