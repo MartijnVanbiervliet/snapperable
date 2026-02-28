@@ -5,6 +5,7 @@ import uuid
 from snapperable.storage.snapshot_storage import SnapshotStorage
 from snapperable.batch_storage_worker import BatchStorageWorker
 from snapperable.logger import logger
+from snapperable.processing_metrics import ProcessingMetric
 
 
 class BatchProcessor:
@@ -31,7 +32,7 @@ class BatchProcessor:
         self.storage_backend = storage_backend
         self.batch_size = batch_size
         self.max_wait_time = max_wait_time
-        self.current_batch: List[Tuple[Any, Any]] = []  # List of (input, output) tuples
+        self.current_batch: List[Tuple[Any, Any, ProcessingMetric | None]] = []  # List of (input, output, metric) tuples
         self.last_flush_time = None
 
         # Delegate background storage to BatchStorageWorker
@@ -39,7 +40,7 @@ class BatchProcessor:
             storage_backend, max_retries=max_retries
         )
 
-    def add_item(self, item: Any, input_value: Any) -> None:
+    def add_item(self, item: Any, input_value: Any, metric: ProcessingMetric | None = None) -> None:
         """
         Add an item to the current batch. If the batch is full or the maximum wait time is exceeded,
         the batch is flushed.
@@ -47,12 +48,13 @@ class BatchProcessor:
         Args:
             item: The output item to be added to the batch.
             input_value: The corresponding input value for input-based tracking.
+            metric: Optional ProcessingMetric for this item.
         """
         logger.debug(
             "Adding item to batch: input_value=%s, output_value=%s", input_value, item
         )
         should_flush = False
-        self.current_batch.append((input_value, item))
+        self.current_batch.append((input_value, item, metric))
         logger.debug("Current batch size: %d", len(self.current_batch))
 
         # Initialize last flush time if it's the first item
@@ -83,12 +85,13 @@ class BatchProcessor:
             logger.debug("Batch cleared after flush (batch_id=%s).", batch_id)
 
         if batch_to_store:
-            # Separate inputs and outputs
-            inputs = [inp for inp, _ in batch_to_store]
-            outputs = [out for _, out in batch_to_store]
+            # Separate inputs, outputs, and metrics
+            inputs = [inp for inp, _, _ in batch_to_store]
+            outputs = [out for _, out, _ in batch_to_store]
+            metrics = [m for _, _, m in batch_to_store if m is not None]
 
             # Delegate to storage worker for background saving
-            self._storage_worker.enqueue_batch(outputs, inputs, batch_id)
+            self._storage_worker.enqueue_batch(outputs, inputs, batch_id, metrics)
             self._update_last_flush_time()
 
     def shutdown(self) -> None:

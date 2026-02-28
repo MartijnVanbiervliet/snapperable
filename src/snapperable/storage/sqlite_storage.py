@@ -8,6 +8,7 @@ from typing import TypeVar, Any
 
 from snapperable.storage.snapshot_storage import SnapshotStorage
 from snapperable.logger import logger
+from snapperable.processing_metrics import ProcessingMetric
 
 T = TypeVar("T")
 
@@ -47,6 +48,14 @@ class SQLiteSnapshotStorage(SnapshotStorage[T]):
                 CREATE TABLE IF NOT EXISTS inputs (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     input_value BLOB NOT NULL
+                )
+                """
+            )
+            cursor.execute(
+                """
+                CREATE TABLE IF NOT EXISTS processing_metrics (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    metric BLOB NOT NULL
                 )
                 """
             )
@@ -148,3 +157,43 @@ class SQLiteSnapshotStorage(SnapshotStorage[T]):
         """
         # This is the same as load_snapshot for SQLite
         return self.load_snapshot()
+
+    def store_metrics(self, metrics: list[ProcessingMetric]) -> None:
+        """
+        Save per-item processing metrics to the database.
+
+        Args:
+            metrics: The list of ProcessingMetric instances to save.
+        """
+        self._initialize_database()
+        with sqlite3.connect(self.db_path) as conn:
+            cursor = conn.cursor()
+            serialized = [(pickle.dumps(m),) for m in metrics]
+            cursor.executemany(
+                "INSERT INTO processing_metrics (metric) VALUES (?)",
+                serialized,
+            )
+            logger.debug("Stored %d metric(s) to SQLite database.", len(metrics))
+
+    def load_metrics(self) -> list[ProcessingMetric]:
+        """
+        Load all stored per-item processing metrics.
+        Returns:
+            A list of ProcessingMetric instances.
+        """
+        result: list[ProcessingMetric] = []
+        try:
+            self._initialize_database()
+            with sqlite3.connect(self.db_path) as conn:
+                cursor = conn.cursor()
+                cursor.execute("SELECT metric FROM processing_metrics ORDER BY id")
+                rows = cursor.fetchall()
+                for row in rows:
+                    try:
+                        result.append(pickle.loads(row[0]))
+                    except (pickle.UnpicklingError, EOFError):
+                        logger.warning("Corrupted metric data encountered and skipped.")
+                logger.debug("Loaded %d metric(s) from SQLite database.", len(result))
+        except sqlite3.DatabaseError:
+            self._reset_database()
+        return result

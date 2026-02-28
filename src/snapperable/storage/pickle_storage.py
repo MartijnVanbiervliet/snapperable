@@ -6,6 +6,7 @@ from typing import TypeVar, Any
 
 from snapperable.storage.snapshot_storage import SnapshotStorage
 from snapperable.logger import logger
+from snapperable.processing_metrics import ProcessingMetric
 
 T = TypeVar("T")
 
@@ -77,6 +78,27 @@ class PickleSnapshotStorage(SnapshotStorage[T]):
         """
         # This is the same as load_snapshot for Pickle
         return self.load_snapshot()
+
+    def store_metrics(self, metrics: list[ProcessingMetric]) -> None:
+        """
+        Save per-item processing metrics, appending to any existing metrics.
+
+        Args:
+            metrics: The list of ProcessingMetric instances to save.
+        """
+        data = self._load_data()
+        existing_metrics = data.get("metrics", [])
+        data["metrics"] = existing_metrics + metrics
+        self._save_data(data)
+
+    def load_metrics(self) -> list[ProcessingMetric]:
+        """
+        Load all stored per-item processing metrics.
+        Returns:
+            A list of ProcessingMetric instances.
+        """
+        data = self._load_data()
+        return data.get("metrics", [])
 
     def _load_data(self) -> dict:
         """
