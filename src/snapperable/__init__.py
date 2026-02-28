@@ -1,4 +1,5 @@
 from snapperable.snapper import Snapper
+from snapperable.item_error_handler import FailedItem, ItemErrorHandler
 from snapperable.storage.snapshot_storage import SnapshotStorage
 from snapperable.storage.pickle_storage import PickleSnapshotStorage
 from snapperable.storage.sqlite_storage import SQLiteSnapshotStorage
@@ -7,6 +8,8 @@ from snapperable.snapshot_tracker import SnapshotTracker
 
 __all__ = [
     "Snapper",
+    "FailedItem",
+    "ItemErrorHandler",
     "SnapshotStorage",
     "PickleSnapshotStorage",
     "SQLiteSnapshotStorage",

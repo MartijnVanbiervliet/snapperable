@@ -6,6 +6,7 @@ from snapperable.storage.snapshot_storage import SnapshotStorage
 from snapperable.storage.sqlite_storage import SQLiteSnapshotStorage
 from snapperable.batch_processor import BatchProcessor
 from snapperable.snapshot_tracker import SnapshotTracker
+from snapperable.item_error_handler import FailedItem, ItemErrorHandler
 
 T = TypeVar("T")
 
@@ -29,6 +30,9 @@ class Snapper(Generic[T]):
         max_retries: int = 3,
         snapshot_storage: Optional[SnapshotStorage[T]] = None,
         batch_processor: Optional[BatchProcessor] = None,
+        fatal_exceptions: tuple[type[Exception], ...] = (),
+        max_consecutive_exceptions: int | None = None,
+        skip_item_errors: bool = False,
     ):
         """
         Initialize the Snapper.
@@ -41,6 +45,19 @@ class Snapper(Generic[T]):
             batch_size: The number of items to batch before saving (used if batch_processor is None).
             max_wait_time: The maximum time to wait before saving a batch (used if batch_processor is None).
             max_retries: Maximum number of retry attempts for failed storage operations (used if batch_processor is None). Default is 3.
+            fatal_exceptions: Tuple of exception types that should immediately halt processing
+                (only relevant when skip_item_errors=True). When one of these exceptions is
+                raised by fn(), start() re-raises it without continuing to the next item.
+            max_consecutive_exceptions: If not None, halt processing when this many item-level
+                exceptions occur consecutively (in a row). Raises RuntimeError with details of
+                the last exception when the threshold is reached.
+                Only relevant when skip_item_errors=True.
+            skip_item_errors: When True, exceptions raised by fn() for individual items are
+                caught, recorded in self.failed_items, and the item is skipped so that
+                processing continues. Fatal exceptions (fatal_exceptions) and the
+                consecutive-exception threshold (max_consecutive_exceptions) bypass this
+                behaviour. When False (the default), all exceptions propagate immediately,
+                preserving the original behaviour.
 
         Raises:
             ValueError: If the provided snapshot_storage is already in use by another Snapper instance.
@@ -76,13 +93,35 @@ class Snapper(Generic[T]):
         # Cache for materialized inputs (used to optimize load() after start())
         self._cached_inputs: list[T] | None = None
 
+        # Dedicated handler for per-item exception tracking and policy enforcement
+        self._error_handler: ItemErrorHandler[T] = ItemErrorHandler(
+            skip_item_errors=skip_item_errors,
+            fatal_exceptions=fatal_exceptions,
+            max_consecutive_exceptions=max_consecutive_exceptions,
+        )
+
+    @property
+    def failed_items(self) -> list[FailedItem[T]]:
+        """Items that failed during the most recent start() call, with their exceptions."""
+        return self._error_handler.failed_items
+
     def start(self) -> None:
         """
         Start processing the iterable, saving progress to disk.
         Uses input-based tracking to handle dynamic iterables robustly.
 
         Note: This method caches the materialized iterable to optimize subsequent load() calls.
+
+        When ``skip_item_errors=True``, exceptions raised by fn() for individual items are
+        caught, recorded in ``self.failed_items``, and the item is skipped so that processing
+        continues with the remaining items.  Two mechanisms can still force a halt:
+        ``fatal_exceptions`` types are re-raised immediately, and reaching
+        ``max_consecutive_exceptions`` consecutive failures raises a RuntimeError.
+        When ``skip_item_errors=False`` (the default), all exceptions propagate unchanged.
         """
+        # Reset failure-tracking state for this run
+        self._error_handler.reset()
+
         try:
             # Materialize and cache the iterable for efficient load() calls
             # This is done once during start() to avoid repeated materialization in load()
@@ -99,8 +138,20 @@ class Snapper(Generic[T]):
 
             # Process remaining items
             for item in snapshot_tracker.get_remaining():
-                # Process the item
-                result = self.fn(item)
+                try:
+                    # Process the item
+                    result = self.fn(item)
+                except Exception as exc:
+                    # Delegate exception policy to the error handler.
+                    # Returns True → skip this item and continue.
+                    # Returns False → re-raise the original exception.
+                    # May raise RuntimeError if the consecutive threshold is reached.
+                    if self._error_handler.on_item_error(item, exc):
+                        continue
+                    raise
+
+                # Successful processing – notify handler so it can reset its counters
+                self._error_handler.on_item_success()
 
                 # Add to batch processor with input value
                 # The batch processor will store both input and output atomically
