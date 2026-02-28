@@ -1,6 +1,6 @@
 """Dedicated class for tracking per-item processing failures."""
 
-from typing import Any, Generic, TypeVar
+from typing import Generic, TypeVar
 
 T = TypeVar("T")
 
