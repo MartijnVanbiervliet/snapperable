@@ -3,6 +3,7 @@
 from pathlib import Path
 import sqlite3
 import pickle
+import json
 import os
 from typing import TypeVar, Any
 
@@ -55,7 +56,7 @@ class SQLiteSnapshotStorage(SnapshotStorage[T]):
                 """
                 CREATE TABLE IF NOT EXISTS processing_metrics (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    metric BLOB NOT NULL
+                    metric TEXT NOT NULL
                 )
                 """
             )
@@ -160,7 +161,7 @@ class SQLiteSnapshotStorage(SnapshotStorage[T]):
 
     def store_metrics(self, metrics: list[ProcessingMetric]) -> None:
         """
-        Save per-item processing metrics to the database.
+        Save per-item processing metrics to the database as JSON strings.
 
         Args:
             metrics: The list of ProcessingMetric instances to save.
@@ -168,7 +169,7 @@ class SQLiteSnapshotStorage(SnapshotStorage[T]):
         self._initialize_database()
         with sqlite3.connect(self.db_path) as conn:
             cursor = conn.cursor()
-            serialized = [(pickle.dumps(m),) for m in metrics]
+            serialized = [(json.dumps(m.to_dict()),) for m in metrics]
             cursor.executemany(
                 "INSERT INTO processing_metrics (metric) VALUES (?)",
                 serialized,
@@ -190,8 +191,8 @@ class SQLiteSnapshotStorage(SnapshotStorage[T]):
                 rows = cursor.fetchall()
                 for row in rows:
                     try:
-                        result.append(pickle.loads(row[0]))
-                    except (pickle.UnpicklingError, EOFError):
+                        result.append(ProcessingMetric.from_dict(json.loads(row[0])))
+                    except (json.JSONDecodeError, KeyError, TypeError):
                         logger.warning("Corrupted metric data encountered and skipped.")
                 logger.debug("Loaded %d metric(s) from SQLite database.", len(result))
         except sqlite3.DatabaseError:

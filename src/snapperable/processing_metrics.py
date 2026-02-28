@@ -31,6 +31,41 @@ class ProcessingMetric:
         """Processing duration in seconds."""
         return self.end_time - self.start_time
 
+    def to_dict(self) -> dict:
+        """
+        Serialise the metric to a JSON-compatible dictionary.
+
+        ``input_item`` is converted with ``repr()`` when it is not natively
+        JSON-serialisable so that the serialised format never depends on pickle.
+        """
+        try:
+            serialised_input = json.loads(json.dumps(self.input_item))
+        except (TypeError, ValueError):
+            serialised_input = repr(self.input_item)
+        return {
+            "input_item": serialised_input,
+            "start_time": self.start_time,
+            "end_time": self.end_time,
+            "success": self.success,
+            "error_message": self.error_message,
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict) -> "ProcessingMetric":
+        """
+        Reconstruct a ProcessingMetric from a dictionary produced by :meth:`to_dict`.
+
+        Unknown keys are ignored so that future additions to the format do not
+        break older readers.
+        """
+        return cls(
+            input_item=data.get("input_item"),
+            start_time=data["start_time"],
+            end_time=data["end_time"],
+            success=data["success"],
+            error_message=data.get("error_message"),
+        )
+
 
 def generate_metrics_report(metrics: list[ProcessingMetric]) -> dict:
     """

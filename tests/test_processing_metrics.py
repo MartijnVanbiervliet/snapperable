@@ -60,6 +60,62 @@ def test_processing_metric_failure_fields():
     assert metric.error_message == "something went wrong"
 
 
+def test_processing_metric_to_dict_roundtrip():
+    metric = ProcessingMetric(
+        input_item=99, start_time=1.0, end_time=2.5, success=True
+    )
+    restored = ProcessingMetric.from_dict(metric.to_dict())
+    assert restored.input_item == 99
+    assert restored.start_time == 1.0
+    assert restored.end_time == 2.5
+    assert restored.success is True
+    assert restored.error_message is None
+
+
+def test_processing_metric_to_dict_roundtrip_failure():
+    metric = ProcessingMetric(
+        input_item="x", start_time=0.0, end_time=0.1, success=False, error_message="err"
+    )
+    restored = ProcessingMetric.from_dict(metric.to_dict())
+    assert restored.success is False
+    assert restored.error_message == "err"
+
+
+def test_processing_metric_to_dict_is_json_serialisable():
+    metric = ProcessingMetric(
+        input_item=[1, 2, 3], start_time=0.0, end_time=1.0, success=True
+    )
+    # Should not raise
+    json.dumps(metric.to_dict())
+
+
+def test_processing_metric_to_dict_non_json_input_item_uses_repr():
+    class Custom:
+        def __repr__(self):
+            return "Custom()"
+
+    metric = ProcessingMetric(
+        input_item=Custom(), start_time=0.0, end_time=1.0, success=True
+    )
+    d = metric.to_dict()
+    assert d["input_item"] == "Custom()"
+    # Resulting dict is still JSON-serialisable
+    json.dumps(d)
+
+
+def test_processing_metric_from_dict_ignores_unknown_keys():
+    data = {
+        "input_item": 1,
+        "start_time": 0.0,
+        "end_time": 0.5,
+        "success": True,
+        "error_message": None,
+        "future_field": "some_value",  # unknown key – should be ignored
+    }
+    metric = ProcessingMetric.from_dict(data)
+    assert metric.input_item == 1
+
+
 # ---------------------------------------------------------------------------
 # Metrics stored for successful items – SQLite
 # ---------------------------------------------------------------------------

@@ -83,12 +83,15 @@ class PickleSnapshotStorage(SnapshotStorage[T]):
         """
         Save per-item processing metrics, appending to any existing metrics.
 
+        Metrics are stored as JSON-compatible dicts so that the format remains
+        readable even if the ProcessingMetric class changes in the future.
+
         Args:
             metrics: The list of ProcessingMetric instances to save.
         """
         data = self._load_data()
         existing_metrics = data.get("metrics", [])
-        data["metrics"] = existing_metrics + metrics
+        data["metrics"] = existing_metrics + [m.to_dict() for m in metrics]
         self._save_data(data)
 
     def load_metrics(self) -> list[ProcessingMetric]:
@@ -98,7 +101,13 @@ class PickleSnapshotStorage(SnapshotStorage[T]):
             A list of ProcessingMetric instances.
         """
         data = self._load_data()
-        return data.get("metrics", [])
+        result = []
+        for d in data.get("metrics", []):
+            try:
+                result.append(ProcessingMetric.from_dict(d))
+            except (KeyError, TypeError):
+                logger.warning("Corrupted metric data encountered and skipped.")
+        return result
 
     def _load_data(self) -> dict:
         """
