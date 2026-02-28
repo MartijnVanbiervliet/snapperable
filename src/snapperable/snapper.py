@@ -1,12 +1,18 @@
 from typing import Iterable, Callable, Any, Optional, TypeVar, Generic
 from types import TracebackType
 import threading
+import time
 
 from snapperable.storage.snapshot_storage import SnapshotStorage
 from snapperable.storage.sqlite_storage import SQLiteSnapshotStorage
 from snapperable.batch_processor import BatchProcessor
 from snapperable.snapshot_tracker import SnapshotTracker
 from snapperable.item_error_handler import FailedItem, ItemErrorHandler
+from snapperable.processing_metrics import (
+    ProcessingMetric,
+    generate_json_report,
+    generate_markdown_report,
+)
 
 T = TypeVar("T")
 
@@ -100,6 +106,9 @@ class Snapper(Generic[T]):
             max_consecutive_exceptions=max_consecutive_exceptions,
         )
 
+        # Accumulates metrics for failed (skipped) items during start()
+        self._failed_metrics: list[ProcessingMetric] = []
+
     @property
     def failed_items(self) -> list[FailedItem[T]]:
         """Items that failed during the most recent start() call, with their exceptions."""
@@ -121,6 +130,7 @@ class Snapper(Generic[T]):
         """
         # Reset failure-tracking state for this run
         self._error_handler.reset()
+        self._failed_metrics = []
 
         try:
             # Materialize and cache the iterable for efficient load() calls
@@ -138,24 +148,44 @@ class Snapper(Generic[T]):
 
             # Process remaining items
             for item in snapshot_tracker.get_remaining():
+                start_time = time.time()
                 try:
                     # Process the item
                     result = self.fn(item)
                 except Exception as exc:
+                    end_time = time.time()
                     # Delegate exception policy to the error handler.
                     # Returns True → skip this item and continue.
                     # Returns False → re-raise the original exception.
                     # May raise RuntimeError if the consecutive threshold is reached.
                     if self._error_handler.on_item_error(item, exc):
+                        self._failed_metrics.append(
+                            ProcessingMetric(
+                                input_item=item,
+                                start_time=start_time,
+                                end_time=end_time,
+                                success=False,
+                                error_message=str(exc),
+                            )
+                        )
                         continue
                     raise
+
+                end_time = time.time()
 
                 # Successful processing – notify handler so it can reset its counters
                 self._error_handler.on_item_success()
 
-                # Add to batch processor with input value
+                metric = ProcessingMetric(
+                    input_item=item,
+                    start_time=start_time,
+                    end_time=end_time,
+                    success=True,
+                )
+
+                # Add to batch processor with input value and metric
                 # The batch processor will store both input and output atomically
-                self.batch_processor.add_item(result, input_value=item)
+                self.batch_processor.add_item(result, input_value=item, metric=metric)
 
                 # Mark as processed
                 snapshot_tracker.mark_processed(item)
@@ -165,6 +195,12 @@ class Snapper(Generic[T]):
         finally:
             # Wait for background thread to finish saving, even if there's an exception
             self.batch_processor.shutdown()
+
+        # Store metrics for failed (skipped) items after the background thread has
+        # fully completed to avoid a write race on the pickle temp file.
+        if self._failed_metrics:
+            self.snapshot_storage.store_metrics(self._failed_metrics)
+            self._failed_metrics = []
 
     def load(self) -> list[T]:
         """
@@ -211,6 +247,38 @@ class Snapper(Generic[T]):
             The list of all processed results, or an empty list if no snapshot exists.
         """
         return self.snapshot_storage.load_all_outputs()
+
+    def load_metrics(self) -> list[ProcessingMetric]:
+        """
+        Load all stored per-item processing metrics from snapshot storage.
+
+        Returns:
+            A list of ProcessingMetric instances recorded during processing.
+        """
+        return self.snapshot_storage.load_metrics()
+
+    def generate_report(self, format: str = "markdown") -> str:
+        """
+        Generate a report summarising per-item processing metrics.
+
+        Args:
+            format: Output format – ``"markdown"`` (default) or ``"json"``.
+
+        Returns:
+            A string containing the formatted metrics report.
+
+        Raises:
+            ValueError: If an unsupported format is requested.
+        """
+        metrics = self.load_metrics()
+        if format == "markdown":
+            return generate_markdown_report(metrics)
+        elif format == "json":
+            return generate_json_report(metrics)
+        else:
+            raise ValueError(
+                f"Unsupported report format: {format!r}. Use 'markdown' or 'json'."
+            )
 
     def _inputs_match(
         self, current_inputs: list[Any], stored_inputs: list[Any]
