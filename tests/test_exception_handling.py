@@ -3,13 +3,14 @@
 import pytest
 from pathlib import Path
 
-from snapperable import Snapper, FailedItem
+from snapperable import Snapper
 from snapperable.storage.pickle_storage import PickleSnapshotStorage
 
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 class ItemError(Exception):
     """Simulates a per-item data error."""
@@ -30,6 +31,7 @@ def _storage(tmp_path: Path, name: str = "test.chkpt") -> PickleSnapshotStorage:
 # ---------------------------------------------------------------------------
 # failed_items tracking
 # ---------------------------------------------------------------------------
+
 
 def test_failed_items_empty_when_no_errors(tmp_path: Path):
     """failed_items is empty when processing succeeds for all items."""
@@ -81,7 +83,9 @@ def test_successful_items_stored_when_some_fail(tmp_path: Path):
         return item * 2
 
     storage = _storage(tmp_path)
-    snapper = Snapper(range(5), process, snapshot_storage=storage, skip_item_errors=True)
+    snapper = Snapper(
+        range(5), process, snapshot_storage=storage, skip_item_errors=True
+    )
     snapper.start()
 
     results = snapper.load()
@@ -107,7 +111,9 @@ def test_failed_items_reset_on_each_start_call(tmp_path: Path):
 
     # Second run on a fresh Snapper (same storage) – item 0 is retried and succeeds
     storage2 = _storage(tmp_path, "test2.chkpt")
-    snapper2 = Snapper([0, 1], process, snapshot_storage=storage2, skip_item_errors=True)
+    snapper2 = Snapper(
+        [0, 1], process, snapshot_storage=storage2, skip_item_errors=True
+    )
     snapper2.start()
     assert snapper2.failed_items == []
 
@@ -115,6 +121,7 @@ def test_failed_items_reset_on_each_start_call(tmp_path: Path):
 # ---------------------------------------------------------------------------
 # failed_items provides retry capability
 # ---------------------------------------------------------------------------
+
 
 def test_failed_items_can_be_retried(tmp_path: Path):
     """Items from failed_items can be fed back into a new Snapper for retry."""
@@ -128,7 +135,9 @@ def test_failed_items_can_be_retried(tmp_path: Path):
         return item * 100
 
     storage1 = _storage(tmp_path, "run1.chkpt")
-    snapper1 = Snapper(range(5), process, snapshot_storage=storage1, skip_item_errors=True)
+    snapper1 = Snapper(
+        range(5), process, snapshot_storage=storage1, skip_item_errors=True
+    )
     snapper1.start()
 
     assert len(snapper1.failed_items) == 2
@@ -136,7 +145,9 @@ def test_failed_items_can_be_retried(tmp_path: Path):
     # Retry only the failed items with a fresh storage
     retry_items = [fi.item for fi in snapper1.failed_items]
     storage2 = _storage(tmp_path, "run2.chkpt")
-    snapper2 = Snapper(retry_items, process, snapshot_storage=storage2, skip_item_errors=True)
+    snapper2 = Snapper(
+        retry_items, process, snapshot_storage=storage2, skip_item_errors=True
+    )
     snapper2.start()
 
     assert snapper2.failed_items == []
@@ -147,6 +158,7 @@ def test_failed_items_can_be_retried(tmp_path: Path):
 # ---------------------------------------------------------------------------
 # fatal_exceptions
 # ---------------------------------------------------------------------------
+
 
 def test_fatal_exception_halts_processing(tmp_path: Path):
     """A fatal exception type re-raises immediately and stops processing."""
@@ -175,6 +187,7 @@ def test_fatal_exception_halts_processing(tmp_path: Path):
 
 def test_fatal_exception_not_in_failed_items(tmp_path: Path):
     """When a fatal exception halts processing, failed_items stays empty."""
+
     def process(item: int) -> int:
         if item == 1:
             raise FatalError("fatal")
@@ -196,6 +209,7 @@ def test_fatal_exception_not_in_failed_items(tmp_path: Path):
 
 def test_non_fatal_exception_not_halted_by_fatal_config(tmp_path: Path):
     """Non-fatal exception types are skipped even when fatal_exceptions is set."""
+
     def process(item: int) -> int:
         if item == 2:
             raise ItemError("skippable")
@@ -216,6 +230,7 @@ def test_non_fatal_exception_not_halted_by_fatal_config(tmp_path: Path):
 
 def test_multiple_fatal_exception_types(tmp_path: Path):
     """Multiple types can be specified in fatal_exceptions."""
+
     def process(item: int) -> int:
         if item == 1:
             raise AnotherError("also fatal")
@@ -237,8 +252,10 @@ def test_multiple_fatal_exception_types(tmp_path: Path):
 # max_consecutive_exceptions
 # ---------------------------------------------------------------------------
 
+
 def test_max_consecutive_exceptions_halts_on_threshold(tmp_path: Path):
     """Processing halts with RuntimeError when consecutive exceptions reach the threshold."""
+
     def process(item: int) -> int:
         # Always fail → all consecutive
         raise ItemError("always fails")
@@ -257,6 +274,7 @@ def test_max_consecutive_exceptions_halts_on_threshold(tmp_path: Path):
 
 def test_max_consecutive_exceptions_resets_on_success(tmp_path: Path):
     """A successful item resets the consecutive-exception counter."""
+
     def process(item: int) -> int:
         # Fail on items 0 and 1 (two in a row), succeed on item 2, then fail two more
         if item in {0, 1, 3, 4}:
@@ -278,6 +296,7 @@ def test_max_consecutive_exceptions_resets_on_success(tmp_path: Path):
 
 def test_max_consecutive_exceptions_zero_ignored_when_none(tmp_path: Path):
     """Without max_consecutive_exceptions, unlimited consecutive failures are tolerated."""
+
     def process(item: int) -> int:
         raise ItemError("all fail")
 
@@ -293,6 +312,7 @@ def test_max_consecutive_exceptions_zero_ignored_when_none(tmp_path: Path):
 
 def test_default_behavior_exceptions_propagate(tmp_path: Path):
     """By default (skip_item_errors=False), exceptions propagate unchanged."""
+
     def process(item: int) -> int:
         if item == 2:
             raise ItemError("propagates")
@@ -304,6 +324,3 @@ def test_default_behavior_exceptions_propagate(tmp_path: Path):
 
     # No items should be tracked in failed_items since skip_item_errors=False
     assert snapper.failed_items == []
-
-
-
