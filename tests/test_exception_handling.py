@@ -3,7 +3,7 @@
 import pytest
 from pathlib import Path
 
-from snapperable import Snapper, FailedItem
+from snapperable import Snapper, FailedItem, ItemErrorHandler
 from snapperable.storage.pickle_storage import PickleSnapshotStorage
 
 
@@ -316,3 +316,75 @@ def test_failed_item_repr():
     r = repr(fi)
     assert "42" in r
     assert "test error" in r
+
+
+# ---------------------------------------------------------------------------
+# ItemErrorHandler unit tests
+# ---------------------------------------------------------------------------
+
+def test_handler_propagates_by_default():
+    """By default (skip_item_errors=False), on_item_error returns False for all exceptions."""
+    handler: ItemErrorHandler[int] = ItemErrorHandler()
+    exc = ItemError("x")
+    assert handler.on_item_error(1, exc) is False
+    assert handler.failed_items == []
+
+
+def test_handler_skips_when_enabled():
+    """With skip_item_errors=True, on_item_error records the failure and returns True."""
+    handler: ItemErrorHandler[int] = ItemErrorHandler(skip_item_errors=True)
+    exc = ItemError("x")
+    assert handler.on_item_error(42, exc) is True
+    assert len(handler.failed_items) == 1
+    assert handler.failed_items[0].item == 42
+    assert handler.failed_items[0].exception is exc
+
+
+def test_handler_fatal_exception_returns_false():
+    """Fatal exception types return False even when skip_item_errors=True."""
+    handler: ItemErrorHandler[int] = ItemErrorHandler(
+        skip_item_errors=True, fatal_exceptions=(FatalError,)
+    )
+    assert handler.on_item_error(1, FatalError("boom")) is False
+    assert handler.failed_items == []
+
+
+def test_handler_on_item_success_resets_consecutive_count():
+    """on_item_success() resets the consecutive counter."""
+    handler: ItemErrorHandler[int] = ItemErrorHandler(
+        skip_item_errors=True, max_consecutive_exceptions=3
+    )
+    handler.on_item_error(0, ItemError("a"))
+    handler.on_item_error(1, ItemError("b"))
+    handler.on_item_success()  # counter back to 0
+    # Two more errors should not trigger the threshold (would need 3 in a row)
+    handler.on_item_error(2, ItemError("c"))
+    handler.on_item_error(3, ItemError("d"))
+    assert len(handler.failed_items) == 4  # all recorded, none raised
+
+
+def test_handler_raises_runtime_error_at_consecutive_threshold():
+    """RuntimeError is raised when consecutive exceptions reach the threshold."""
+    handler: ItemErrorHandler[int] = ItemErrorHandler(
+        skip_item_errors=True, max_consecutive_exceptions=2
+    )
+    handler.on_item_error(0, ItemError("a"))
+    with pytest.raises(RuntimeError, match="2 consecutive"):
+        handler.on_item_error(1, ItemError("b"))
+
+
+def test_handler_reset_clears_state():
+    """reset() clears failed_items and restarts the consecutive counter."""
+    handler: ItemErrorHandler[int] = ItemErrorHandler(skip_item_errors=True)
+    handler.on_item_error(1, ItemError("x"))
+    handler.on_item_error(2, ItemError("y"))
+    handler.reset()
+    assert handler.failed_items == []
+    # Consecutive counter was also reset — check by verifying threshold not hit prematurely
+    handler2: ItemErrorHandler[int] = ItemErrorHandler(
+        skip_item_errors=True, max_consecutive_exceptions=2
+    )
+    handler2.on_item_error(1, ItemError("a"))
+    handler2.reset()
+    # After reset, next single error should not trigger threshold
+    handler2.on_item_error(2, ItemError("b"))  # count is 1 → no RuntimeError

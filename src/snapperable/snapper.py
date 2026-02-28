@@ -6,25 +6,9 @@ from snapperable.storage.snapshot_storage import SnapshotStorage
 from snapperable.storage.sqlite_storage import SQLiteSnapshotStorage
 from snapperable.batch_processor import BatchProcessor
 from snapperable.snapshot_tracker import SnapshotTracker
+from snapperable.item_error_handler import FailedItem, ItemErrorHandler
 
 T = TypeVar("T")
-
-
-class FailedItem(Generic[T]):
-    """
-    Holds information about an item that failed processing.
-
-    Attributes:
-        item: The input item that caused the exception.
-        exception: The exception raised when processing the item.
-    """
-
-    def __init__(self, item: T, exception: Exception) -> None:
-        self.item = item
-        self.exception = exception
-
-    def __repr__(self) -> str:
-        return f"FailedItem(item={self.item!r}, exception={self.exception!r})"
 
 
 class Snapper(Generic[T]):
@@ -109,13 +93,17 @@ class Snapper(Generic[T]):
         # Cache for materialized inputs (used to optimize load() after start())
         self._cached_inputs: list[T] | None = None
 
-        # Exception handling configuration
-        self.fatal_exceptions = tuple(fatal_exceptions)
-        self.max_consecutive_exceptions = max_consecutive_exceptions
-        self.skip_item_errors = skip_item_errors
+        # Dedicated handler for per-item exception tracking and policy enforcement
+        self._error_handler: ItemErrorHandler[T] = ItemErrorHandler(
+            skip_item_errors=skip_item_errors,
+            fatal_exceptions=fatal_exceptions,
+            max_consecutive_exceptions=max_consecutive_exceptions,
+        )
 
-        # Tracks items that failed during the most recent start() call
-        self.failed_items: list[FailedItem[T]] = []
+    @property
+    def failed_items(self) -> list[FailedItem[T]]:
+        """Items that failed during the most recent start() call, with their exceptions."""
+        return self._error_handler.failed_items
 
     def start(self) -> None:
         """
@@ -131,9 +119,8 @@ class Snapper(Generic[T]):
         ``max_consecutive_exceptions`` consecutive failures raises a RuntimeError.
         When ``skip_item_errors=False`` (the default), all exceptions propagate unchanged.
         """
-        # Reset failure tracking for this run
-        self.failed_items = []
-        consecutive_exception_count = 0
+        # Reset failure-tracking state for this run
+        self._error_handler.reset()
 
         try:
             # Materialize and cache the iterable for efficient load() calls
@@ -155,33 +142,16 @@ class Snapper(Generic[T]):
                     # Process the item
                     result = self.fn(item)
                 except Exception as exc:
-                    # Re-raise immediately if this is a configured fatal exception type
-                    if self.fatal_exceptions and isinstance(exc, self.fatal_exceptions):
-                        raise
+                    # Delegate exception policy to the error handler.
+                    # Returns True → skip this item and continue.
+                    # Returns False → re-raise the original exception.
+                    # May raise RuntimeError if the consecutive threshold is reached.
+                    if self._error_handler.on_item_error(item, exc):
+                        continue
+                    raise
 
-                    # If item-error skipping is not enabled, propagate the exception
-                    if not self.skip_item_errors:
-                        raise
-
-                    # Track the consecutive exception count
-                    consecutive_exception_count += 1
-
-                    # Re-raise if the consecutive exception threshold has been reached
-                    if (
-                        self.max_consecutive_exceptions is not None
-                        and consecutive_exception_count >= self.max_consecutive_exceptions
-                    ):
-                        raise RuntimeError(
-                            f"Processing halted after {consecutive_exception_count} consecutive "
-                            f"exception(s). Last exception: {exc!r}"
-                        ) from exc
-
-                    # Record the failed item and skip to the next one
-                    self.failed_items.append(FailedItem(item=item, exception=exc))
-                    continue
-
-                # Successful processing – reset the consecutive counter
-                consecutive_exception_count = 0
+                # Successful processing – notify handler so it can reset its counters
+                self._error_handler.on_item_success()
 
                 # Add to batch processor with input value
                 # The batch processor will store both input and output atomically
