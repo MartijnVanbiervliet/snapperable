@@ -94,6 +94,19 @@ class BatchProcessor:
             self._storage_worker.enqueue_batch(outputs, inputs, batch_id, metrics)
             self._update_last_flush_time()
 
+    def add_failed_metric(self, metric: ProcessingMetric) -> None:
+        """
+        Immediately enqueue a failed-item metric for background storage.
+
+        This method is used when an item fails processing (skip_item_errors=True)
+        to persist the failure metric without waiting until the end of the run.
+
+        Args:
+            metric: The ProcessingMetric for the failed item.
+        """
+        batch_id = str(uuid.uuid4())[:8]
+        self._storage_worker.enqueue_metrics_only([metric], batch_id)
+
     def shutdown(self) -> None:
         """
         Gracefully shutdown the background worker thread.

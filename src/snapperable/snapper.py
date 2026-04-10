@@ -39,6 +39,7 @@ class Snapper(Generic[T]):
         fatal_exceptions: tuple[type[Exception], ...] = (),
         max_consecutive_exceptions: int | None = None,
         skip_item_errors: bool = False,
+        retry_failed_items: bool = False,
     ):
         """
         Initialize the Snapper.
@@ -64,12 +65,18 @@ class Snapper(Generic[T]):
                 consecutive-exception threshold (max_consecutive_exceptions) bypass this
                 behaviour. When False (the default), all exceptions propagate immediately,
                 preserving the original behaviour.
+            retry_failed_items: When True, items that failed in a previous run are retried
+                on the next call to start(). When False (the default), previously-failed
+                items are skipped so that only new items are processed.
+                Only relevant when skip_item_errors=True and a snapshot from a prior run
+                exists in storage.
 
         Raises:
             ValueError: If the provided snapshot_storage is already in use by another Snapper instance.
         """
         self.iterable = iterable
         self.fn = fn
+        self.retry_failed_items = retry_failed_items
 
         if snapshot_storage is None:
             snapshot_storage = SQLiteSnapshotStorage()
@@ -106,9 +113,6 @@ class Snapper(Generic[T]):
             max_consecutive_exceptions=max_consecutive_exceptions,
         )
 
-        # Accumulates metrics for failed (skipped) items during start()
-        self._failed_metrics: list[ProcessingMetric] = []
-
     @property
     def failed_items(self) -> list[FailedItem[T]]:
         """Items that failed during the most recent start() call, with their exceptions."""
@@ -130,7 +134,6 @@ class Snapper(Generic[T]):
         """
         # Reset failure-tracking state for this run
         self._error_handler.reset()
-        self._failed_metrics = []
 
         try:
             # Materialize and cache the iterable for efficient load() calls
@@ -141,9 +144,21 @@ class Snapper(Generic[T]):
             materialized_inputs = list(self.iterable)
             self._cached_inputs = materialized_inputs
 
+            # When retry_failed_items=False (default), load previously-failed inputs from
+            # stored metrics so they can be excluded from this run's remaining items.
+            failed_inputs: list[Any] = []
+            if not self.retry_failed_items:
+                failed_inputs = [
+                    m.input_item
+                    for m in self.snapshot_storage.load_metrics()
+                    if not m.success
+                ]
+
             # Create snapshot tracker to manage processed inputs
             snapshot_tracker = SnapshotTracker(
-                iterable=materialized_inputs, snapshot_storage=self.snapshot_storage
+                iterable=materialized_inputs,
+                snapshot_storage=self.snapshot_storage,
+                additional_processed_inputs=failed_inputs,
             )
 
             # Process remaining items
@@ -159,7 +174,8 @@ class Snapper(Generic[T]):
                     # Returns False → re-raise the original exception.
                     # May raise RuntimeError if the consecutive threshold is reached.
                     if self._error_handler.on_item_error(item, exc):
-                        self._failed_metrics.append(
+                        # Persist the failed metric immediately via the background worker
+                        self.batch_processor.add_failed_metric(
                             ProcessingMetric(
                                 input_item=item,
                                 start_time=start_time,
@@ -195,12 +211,6 @@ class Snapper(Generic[T]):
         finally:
             # Wait for background thread to finish saving, even if there's an exception
             self.batch_processor.shutdown()
-
-        # Store metrics for failed (skipped) items after the background thread has
-        # fully completed to avoid a write race on the pickle temp file.
-        if self._failed_metrics:
-            self.snapshot_storage.store_metrics(self._failed_metrics)
-            self._failed_metrics = []
 
     def load(self) -> list[T]:
         """
