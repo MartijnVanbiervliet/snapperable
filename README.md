@@ -147,6 +147,93 @@ snapper.start()
 - `batch_size`: Number of processed items to accumulate before saving a snapshot (default: 1)
 - `max_wait_time`: Maximum time in seconds to wait before saving, regardless of batch size (default: None)
 
+## Error Handling
+
+Snapperable provides flexible exception handling for long-running pipelines:
+
+```python
+from snapperable import Snapper
+
+def process_item(item):
+    if item == 3:
+        raise ValueError("bad item")
+    return item * 2
+
+snapper = Snapper(
+    range(10),
+    process_item,
+    skip_item_errors=True,           # Continue after per-item failures
+    fatal_exceptions=(KeyboardInterrupt,),  # Always halt on these
+    max_consecutive_exceptions=5,    # Halt after 5 failures in a row
+)
+snapper.start()
+
+# Inspect failures
+for failed in snapper.failed_items:
+    print(f"Item {failed.item} failed: {failed.exception}")
+```
+
+## Processing Metrics
+
+Snapperable automatically tracks per-item processing metrics (start/end time, success/failure, error messages) and stores them in the same snapshot storage as checkpoints.
+
+### Loading Metrics
+
+```python
+from snapperable import Snapper
+from snapperable.storage.sqlite_storage import SQLiteSnapshotStorage
+
+storage = SQLiteSnapshotStorage("checkpoint.db")
+snapper = Snapper(range(100), process_item, snapshot_storage=storage)
+snapper.start()
+
+# Load raw metrics
+metrics = snapper.load_metrics()
+for m in metrics:
+    print(f"Item {m.input_item}: {m.duration:.3f}s, success={m.success}")
+```
+
+### Generating Reports
+
+Use `generate_report()` to produce a formatted summary:
+
+```python
+# Markdown report (default)
+print(snapper.generate_report())
+
+# JSON report
+import json
+data = json.loads(snapper.generate_report(format="json"))
+print(data["avg_duration"])
+```
+
+The report includes:
+- Number of items processed (total, successful, failed)
+- Average, min, and max processing time per item
+- Time range of processing (start/end timestamps, total elapsed)
+- Outliers (very slow/fast items, detected via 2σ threshold)
+- Count and details of failed items with error messages
+
+### Standalone Report Functions
+
+You can also use the report functions independently on a list of `ProcessingMetric` instances:
+
+```python
+from snapperable import generate_markdown_report, generate_json_report, generate_metrics_report
+
+metrics = snapper.load_metrics()
+
+# Markdown string
+md = generate_markdown_report(metrics)
+
+# JSON string
+js = generate_json_report(metrics)
+
+# Raw dict
+report = generate_metrics_report(metrics)
+print(report["avg_duration"])
+```
+
 ## Development
 
 ### Editable installation

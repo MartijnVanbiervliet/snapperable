@@ -1,12 +1,18 @@
 from typing import Iterable, Callable, Any, Optional, TypeVar, Generic
 from types import TracebackType
 import threading
+import time
 
 from snapperable.storage.snapshot_storage import SnapshotStorage
 from snapperable.storage.sqlite_storage import SQLiteSnapshotStorage
 from snapperable.batch_processor import BatchProcessor
 from snapperable.snapshot_tracker import SnapshotTracker
 from snapperable.item_error_handler import FailedItem, ItemErrorHandler
+from snapperable.processing_metrics import (
+    ProcessingMetric,
+    generate_json_report,
+    generate_markdown_report,
+)
 
 T = TypeVar("T")
 
@@ -33,6 +39,7 @@ class Snapper(Generic[T]):
         fatal_exceptions: tuple[type[Exception], ...] = (),
         max_consecutive_exceptions: int | None = None,
         skip_item_errors: bool = False,
+        retry_failed_items: bool = False,
     ):
         """
         Initialize the Snapper.
@@ -58,12 +65,18 @@ class Snapper(Generic[T]):
                 consecutive-exception threshold (max_consecutive_exceptions) bypass this
                 behaviour. When False (the default), all exceptions propagate immediately,
                 preserving the original behaviour.
+            retry_failed_items: When True, items that failed in a previous run are retried
+                on the next call to start(). When False (the default), previously-failed
+                items are skipped so that only new items are processed.
+                Only relevant when skip_item_errors=True and a snapshot from a prior run
+                exists in storage.
 
         Raises:
             ValueError: If the provided snapshot_storage is already in use by another Snapper instance.
         """
         self.iterable = iterable
         self.fn = fn
+        self.retry_failed_items = retry_failed_items
 
         if snapshot_storage is None:
             snapshot_storage = SQLiteSnapshotStorage()
@@ -131,31 +144,64 @@ class Snapper(Generic[T]):
             materialized_inputs = list(self.iterable)
             self._cached_inputs = materialized_inputs
 
+            # When retry_failed_items=False (default), load previously-failed inputs from
+            # stored metrics so they can be excluded from this run's remaining items.
+            failed_inputs: list[Any] = []
+            if not self.retry_failed_items:
+                failed_inputs = [
+                    m.input_item
+                    for m in self.snapshot_storage.load_metrics()
+                    if not m.success
+                ]
+
             # Create snapshot tracker to manage processed inputs
             snapshot_tracker = SnapshotTracker(
-                iterable=materialized_inputs, snapshot_storage=self.snapshot_storage
+                iterable=materialized_inputs,
+                snapshot_storage=self.snapshot_storage,
+                additional_processed_inputs=failed_inputs,
             )
 
             # Process remaining items
             for item in snapshot_tracker.get_remaining():
+                start_time = time.time()
                 try:
                     # Process the item
                     result = self.fn(item)
                 except Exception as exc:
+                    end_time = time.time()
                     # Delegate exception policy to the error handler.
                     # Returns True → skip this item and continue.
                     # Returns False → re-raise the original exception.
                     # May raise RuntimeError if the consecutive threshold is reached.
                     if self._error_handler.on_item_error(item, exc):
+                        # Persist the failed metric immediately via the background worker
+                        self.batch_processor.add_failed_metric(
+                            ProcessingMetric(
+                                input_item=item,
+                                start_time=start_time,
+                                end_time=end_time,
+                                success=False,
+                                error_message=str(exc),
+                            )
+                        )
                         continue
                     raise
+
+                end_time = time.time()
 
                 # Successful processing – notify handler so it can reset its counters
                 self._error_handler.on_item_success()
 
-                # Add to batch processor with input value
+                metric = ProcessingMetric(
+                    input_item=item,
+                    start_time=start_time,
+                    end_time=end_time,
+                    success=True,
+                )
+
+                # Add to batch processor with input value and metric
                 # The batch processor will store both input and output atomically
-                self.batch_processor.add_item(result, input_value=item)
+                self.batch_processor.add_item(result, input_value=item, metric=metric)
 
                 # Mark as processed
                 snapshot_tracker.mark_processed(item)
@@ -211,6 +257,38 @@ class Snapper(Generic[T]):
             The list of all processed results, or an empty list if no snapshot exists.
         """
         return self.snapshot_storage.load_all_outputs()
+
+    def load_metrics(self) -> list[ProcessingMetric]:
+        """
+        Load all stored per-item processing metrics from snapshot storage.
+
+        Returns:
+            A list of ProcessingMetric instances recorded during processing.
+        """
+        return self.snapshot_storage.load_metrics()
+
+    def generate_report(self, format: str = "markdown") -> str:
+        """
+        Generate a report summarising per-item processing metrics.
+
+        Args:
+            format: Output format – ``"markdown"`` (default) or ``"json"``.
+
+        Returns:
+            A string containing the formatted metrics report.
+
+        Raises:
+            ValueError: If an unsupported format is requested.
+        """
+        metrics = self.load_metrics()
+        if format == "markdown":
+            return generate_markdown_report(metrics)
+        elif format == "json":
+            return generate_json_report(metrics)
+        else:
+            raise ValueError(
+                f"Unsupported report format: {format!r}. Use 'markdown' or 'json'."
+            )
 
     def _inputs_match(
         self, current_inputs: list[Any], stored_inputs: list[Any]

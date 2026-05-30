@@ -15,16 +15,26 @@ class SnapshotTracker:
     against stored inputs.
     """
 
-    def __init__(self, iterable: Iterable[T], snapshot_storage: SnapshotStorage[T]):
+    def __init__(
+        self,
+        iterable: Iterable[T],
+        snapshot_storage: SnapshotStorage[T],
+        additional_processed_inputs: list[Any] | None = None,
+    ):
         """
         Initialize the SnapshotTracker.
 
         Args:
             iterable: The iterable containing items to process.
             snapshot_storage: The storage backend for tracking processed items.
+            additional_processed_inputs: Optional list of extra input values that should
+                be treated as already processed and therefore skipped.  Pass the inputs
+                of previously-failed items here when ``retry_failed_items=False`` to
+                prevent those items from being retried on re-run.
         """
         self.iterable = iterable
         self.snapshot_storage = snapshot_storage
+        self._additional_processed_inputs: list[Any] = additional_processed_inputs or []
         self._processed_inputs_set: set[Any] = set()
         self._initialized = False
 
@@ -66,6 +76,13 @@ class SnapshotTracker:
                 self._processed_inputs_set.add(SnapshotTracker._make_hashable(inp))
             except TypeError:
                 # If input is not hashable, we'll process it again
+                pass
+
+        # Also skip any additional inputs provided at construction time
+        for inp in self._additional_processed_inputs:
+            try:
+                self._processed_inputs_set.add(SnapshotTracker._make_hashable(inp))
+            except TypeError:
                 pass
 
         self._initialized = True

@@ -107,6 +107,7 @@ def test_handler_non_fatal_exception_still_skipped():
 
 def test_handler_multiple_fatal_exception_types():
     """All types in fatal_exceptions halt processing."""
+
     class AnotherFatal(Exception):
         pass
 

@@ -6,6 +6,7 @@ import threading
 
 from snapperable.storage.snapshot_storage import SnapshotStorage
 from snapperable.logger import logger
+from snapperable.processing_metrics import ProcessingMetric
 
 
 class BatchStorageWorker:
@@ -28,9 +29,12 @@ class BatchStorageWorker:
         """
         self.storage_backend = storage_backend
         self.max_retries = max_retries
-        self._save_queue: queue.Queue[tuple[List[Any], List[Any], str] | None] = (
-            queue.Queue()
-        )
+        # Queue items are (outputs, inputs, batch_id, metrics).
+        # When outputs and inputs are None the entry is metrics-only (no snapshot write).
+        self._save_queue: queue.Queue[
+            tuple[List[Any] | None, List[Any] | None, str, List[ProcessingMetric]]
+            | None
+        ] = queue.Queue()
         self._worker_thread = threading.Thread(target=self._save_worker, daemon=True)
         self._shutdown = False
         self._shutdown_lock = threading.Lock()
@@ -38,7 +42,11 @@ class BatchStorageWorker:
         self._worker_thread.start()
 
     def enqueue_batch(
-        self, outputs: List[Any], inputs: List[Any], batch_id: str = "undefined"
+        self,
+        outputs: List[Any],
+        inputs: List[Any],
+        batch_id: str = "undefined",
+        metrics: List[ProcessingMetric] | None = None,
     ) -> None:
         """
         Enqueue a batch for background saving.
@@ -47,6 +55,7 @@ class BatchStorageWorker:
             outputs: The list of processed outputs to save.
             inputs: The list of corresponding inputs.
             batch_id: Unique identifier for the batch for tracing in logs.
+            metrics: Optional list of ProcessingMetric instances for this batch.
 
         Raises:
             RuntimeError: If called after shutdown() has been invoked.
@@ -63,8 +72,42 @@ class BatchStorageWorker:
             len(outputs),
             batch_id,
         )
-        self._save_queue.put((outputs, inputs, batch_id))
+        self._save_queue.put((outputs, inputs, batch_id, metrics or []))
         logger.debug("Batch enqueued (batch_id=%s).", batch_id)
+
+    def enqueue_metrics_only(
+        self,
+        metrics: List[ProcessingMetric],
+        batch_id: str = "undefined",
+    ) -> None:
+        """
+        Enqueue a metrics-only entry for background saving (no snapshot write).
+
+        This is used to persist failed-item metrics immediately without storing
+        any output or input values.
+
+        Args:
+            metrics: The list of ProcessingMetric instances to save.
+            batch_id: Unique identifier for the entry for tracing in logs.
+
+        Raises:
+            RuntimeError: If called after shutdown() has been invoked.
+        """
+        with self._shutdown_lock:
+            if self._shutdown:
+                raise RuntimeError(
+                    "Cannot enqueue metrics after BatchStorageWorker has been shut down. "
+                    "Metrics will not be saved."
+                )
+
+        logger.debug(
+            "Enqueueing %d metric(s) for background saving (batch_id=%s).",
+            len(metrics),
+            batch_id,
+        )
+        # Use None for outputs and inputs to signal a metrics-only entry
+        self._save_queue.put((None, None, batch_id, metrics))
+        logger.debug("Metrics enqueued (batch_id=%s).", batch_id)
 
     def _save_worker(self) -> None:
         """
@@ -81,7 +124,7 @@ class BatchStorageWorker:
                 self._save_queue.task_done()
                 break
 
-            outputs, inputs, batch_id = item
+            outputs, inputs, batch_id, metrics = item
             last_exception = None
 
             # Retry loop
@@ -89,20 +132,22 @@ class BatchStorageWorker:
                 try:
                     if attempt > 0:
                         logger.warning(
-                            "Retrying storage operation (attempt %d/%d) for batch of size %d (batch_id=%s)",
+                            "Retrying storage operation (attempt %d/%d) for batch (batch_id=%s)",
                             attempt,
                             self.max_retries,
-                            len(outputs),
                             batch_id,
                         )
                     else:
                         logger.debug(
-                            "Background thread storing batch of size %d (batch_id=%s).",
-                            len(outputs),
+                            "Background thread storing batch (batch_id=%s).",
                             batch_id,
                         )
 
-                    self.storage_backend.store_snapshot(outputs, inputs)
+                    # outputs/inputs are None for metrics-only entries
+                    if outputs is not None:
+                        self.storage_backend.store_snapshot(outputs, inputs)
+                    if metrics:
+                        self.storage_backend.store_metrics(metrics)
                     logger.debug(
                         "Background thread stored batch (batch_id=%s).", batch_id
                     )

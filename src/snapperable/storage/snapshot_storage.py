@@ -3,6 +3,8 @@
 from abc import ABC, abstractmethod
 from typing import TypeVar, Generic, Any
 
+from snapperable.processing_metrics import ProcessingMetric
+
 T = TypeVar("T")
 
 
@@ -58,5 +60,23 @@ class SnapshotStorage(ABC, Generic[T]):
         Load all processed outputs from storage, regardless of matching inputs.
         Returns:
             A list of all processed items.
+        """
+        pass
+
+    @abstractmethod
+    def store_metrics(self, metrics: list[ProcessingMetric]) -> None:
+        """
+        Save per-item processing metrics to storage.
+        Args:
+            metrics: The list of ProcessingMetric instances to save.
+        """
+        pass
+
+    @abstractmethod
+    def load_metrics(self) -> list[ProcessingMetric]:
+        """
+        Load all stored per-item processing metrics.
+        Returns:
+            A list of ProcessingMetric instances.
         """
         pass
