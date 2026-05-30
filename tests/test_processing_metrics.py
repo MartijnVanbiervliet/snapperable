@@ -386,3 +386,159 @@ def test_metrics_accumulate_across_runs(tmp_path):
 
     # All 5 items should have metrics
     assert len(metrics) == 5
+
+
+# ---------------------------------------------------------------------------
+# Failed metrics stored immediately (not delayed until after shutdown)
+# ---------------------------------------------------------------------------
+
+
+def test_failed_metrics_stored_immediately(tmp_path):
+    """Failed metrics must be stored through the background worker, not delayed."""
+    fail_on = {1, 3}
+    stored_counts = []
+
+    class TrackingStorage(SQLiteSnapshotStorage):
+        def store_metrics(self, metrics):
+            super().store_metrics(metrics)
+            stored_counts.append(len(metrics))
+
+    storage = TrackingStorage(str(tmp_path / "test.db"))
+
+    def process(x):
+        if x in fail_on:
+            raise ItemError(f"bad {x}")
+        return x * 2
+
+    snapper = Snapper(range(5), process, snapshot_storage=storage, skip_item_errors=True)
+    snapper.start()
+
+    # store_metrics should have been called multiple times (once per failure + once per success batch)
+    # rather than a single call after shutdown
+    assert len(stored_counts) >= 2
+    # Each call should only contain the metrics that were ready at that time
+    assert all(c >= 1 for c in stored_counts)
+
+    # All metrics should ultimately be present in storage
+    metrics = storage.load_metrics()
+    assert len(metrics) == 5
+
+
+# ---------------------------------------------------------------------------
+# retry_failed_items=False (default) – skip previously failed items
+# ---------------------------------------------------------------------------
+
+
+def test_failed_items_not_retried_by_default(tmp_path):
+    """On re-run, items that failed previously should be skipped (default behaviour)."""
+    fail_on = {1}
+    processed_second_run = []
+
+    def process(x):
+        if x in fail_on:
+            raise ItemError(f"bad {x}")
+        return x * 2
+
+    storage = _sqlite_storage(tmp_path)
+
+    # First run: item 1 fails, items 0, 2 succeed
+    with Snapper(range(3), process, snapshot_storage=storage, skip_item_errors=True) as snapper1:
+        snapper1.start()
+
+    # Second run with same iterable – item 1 should NOT be retried
+    def process2(x):
+        processed_second_run.append(x)
+        return x * 2
+
+    # Reuse same storage file from the first run
+    storage2 = _sqlite_storage(tmp_path)
+    with Snapper(range(3), process2, snapshot_storage=storage2) as snapper2:
+        snapper2.start()
+
+    assert 1 not in processed_second_run
+
+
+def test_failed_items_retried_when_requested(tmp_path):
+    """When retry_failed_items=True, previously failed items are retried."""
+    fail_on = {1}
+    processed_second_run = []
+
+    def process(x):
+        if x in fail_on:
+            raise ItemError(f"bad {x}")
+        return x * 2
+
+    storage = _sqlite_storage(tmp_path)
+
+    # First run: item 1 fails
+    with Snapper(range(3), process, snapshot_storage=storage, skip_item_errors=True) as snapper1:
+        snapper1.start()
+
+    # Second run with retry_failed_items=True – item 1 should be retried
+    def process2(x):
+        processed_second_run.append(x)
+        return x * 2
+
+    # Reuse same storage file from the first run
+    storage2 = _sqlite_storage(tmp_path)
+    with Snapper(
+        range(3), process2, snapshot_storage=storage2, retry_failed_items=True
+    ) as snapper2:
+        snapper2.start()
+
+    assert 1 in processed_second_run
+
+
+def test_successful_items_not_reprocessed_regardless_of_retry_flag(tmp_path):
+    """Successfully processed items are never reprocessed, even with retry_failed_items=True."""
+    processed_second_run = []
+
+    def process(x):
+        return x * 2
+
+    storage = _sqlite_storage(tmp_path)
+
+    # First run: all items succeed
+    with Snapper(range(3), process, snapshot_storage=storage) as snapper1:
+        snapper1.start()
+
+    def process2(x):
+        processed_second_run.append(x)
+        return x * 2
+
+    # Reuse same storage file from the first run
+    storage2 = _sqlite_storage(tmp_path)
+    with Snapper(
+        range(3), process2, snapshot_storage=storage2, retry_failed_items=True
+    ) as snapper2:
+        snapper2.start()
+
+    # No items should have been reprocessed
+    assert processed_second_run == []
+
+
+def test_retry_failed_items_pickle_backend(tmp_path):
+    """retry_failed_items works with the Pickle storage backend."""
+    fail_on = {2}
+    processed_second_run = []
+
+    def process(x):
+        if x in fail_on:
+            raise ItemError(f"bad {x}")
+        return x * 2
+
+    storage = _pickle_storage(tmp_path)
+    with Snapper(range(4), process, snapshot_storage=storage, skip_item_errors=True) as snapper1:
+        snapper1.start()
+
+    def process2(x):
+        processed_second_run.append(x)
+        return x * 2
+
+    # Reuse same storage file from the first run; default retry_failed_items=False
+    storage2 = _pickle_storage(tmp_path)
+    with Snapper(range(4), process2, snapshot_storage=storage2) as snapper2:
+        snapper2.start()
+
+    assert 2 not in processed_second_run
+
