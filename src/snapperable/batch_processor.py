@@ -32,7 +32,9 @@ class BatchProcessor:
         self.storage_backend = storage_backend
         self.batch_size = batch_size
         self.max_wait_time = max_wait_time
-        self.current_batch: List[Tuple[Any, Any, ProcessingMetric | None]] = []  # List of (input, output, metric) tuples
+        self.current_batch: List[
+            Tuple[Any, Any, ProcessingMetric | None]
+        ] = []  # List of (input, output, metric) tuples
         self.last_flush_time = None
 
         # Delegate background storage to BatchStorageWorker
@@ -40,7 +42,9 @@ class BatchProcessor:
             storage_backend, max_retries=max_retries
         )
 
-    def add_item(self, item: Any, input_value: Any, metric: ProcessingMetric | None = None) -> None:
+    def add_item(
+        self, item: Any, input_value: Any, metric: ProcessingMetric | None = None
+    ) -> None:
         """
         Add an item to the current batch. If the batch is full or the maximum wait time is exceeded,
         the batch is flushed.

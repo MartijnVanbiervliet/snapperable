@@ -32,7 +32,8 @@ class BatchStorageWorker:
         # Queue items are (outputs, inputs, batch_id, metrics).
         # When outputs and inputs are None the entry is metrics-only (no snapshot write).
         self._save_queue: queue.Queue[
-            tuple[List[Any] | None, List[Any] | None, str, List[ProcessingMetric]] | None
+            tuple[List[Any] | None, List[Any] | None, str, List[ProcessingMetric]]
+            | None
         ] = queue.Queue()
         self._worker_thread = threading.Thread(target=self._save_worker, daemon=True)
         self._shutdown = False

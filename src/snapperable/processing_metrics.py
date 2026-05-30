@@ -188,8 +188,8 @@ def generate_markdown_report(metrics: list[ProcessingMetric]) -> str:
     lines += [
         "## Summary",
         "",
-        f"| Metric | Value |",
-        f"|--------|-------|",
+        "| Metric | Value |",
+        "|--------|-------|",
         f"| Total items processed | {report['total_items']} |",
         f"| Successful | {report['successful_items']} |",
         f"| Failed | {report['failed_count']} |",
@@ -205,8 +205,8 @@ def generate_markdown_report(metrics: list[ProcessingMetric]) -> str:
     if report["slow_outliers"]:
         lines += ["## Slow Outliers (> mean + 2σ)", ""]
         lines += [
-            f"| Input Item | Duration |",
-            f"|------------|----------|",
+            "| Input Item | Duration |",
+            "|------------|----------|",
         ]
         for item in report["slow_outliers"]:
             lines.append(f"| {item['input_item']} | {item['duration']:.4f}s |")
@@ -215,8 +215,8 @@ def generate_markdown_report(metrics: list[ProcessingMetric]) -> str:
     if report["fast_outliers"]:
         lines += ["## Fast Outliers (< mean − 2σ)", ""]
         lines += [
-            f"| Input Item | Duration |",
-            f"|------------|----------|",
+            "| Input Item | Duration |",
+            "|------------|----------|",
         ]
         for item in report["fast_outliers"]:
             lines.append(f"| {item['input_item']} | {item['duration']:.4f}s |")
@@ -225,8 +225,8 @@ def generate_markdown_report(metrics: list[ProcessingMetric]) -> str:
     if report["failed_items"]:
         lines += ["## Failed Items", ""]
         lines += [
-            f"| Input Item | Error |",
-            f"|------------|-------|",
+            "| Input Item | Error |",
+            "|------------|-------|",
         ]
         for item in report["failed_items"]:
             lines.append(f"| {item['input_item']} | {item['error_message']} |")

@@ -6,7 +6,13 @@ from pathlib import Path
 
 import pytest
 
-from snapperable import Snapper, ProcessingMetric, generate_metrics_report, generate_json_report, generate_markdown_report
+from snapperable import (
+    Snapper,
+    ProcessingMetric,
+    generate_metrics_report,
+    generate_json_report,
+    generate_markdown_report,
+)
 from snapperable.storage.pickle_storage import PickleSnapshotStorage
 from snapperable.storage.sqlite_storage import SQLiteSnapshotStorage
 
@@ -61,9 +67,7 @@ def test_processing_metric_failure_fields():
 
 
 def test_processing_metric_to_dict_roundtrip():
-    metric = ProcessingMetric(
-        input_item=99, start_time=1.0, end_time=2.5, success=True
-    )
+    metric = ProcessingMetric(input_item=99, start_time=1.0, end_time=2.5, success=True)
     restored = ProcessingMetric.from_dict(metric.to_dict())
     assert restored.input_item == 99
     assert restored.start_time == 1.0
@@ -286,7 +290,9 @@ def test_generate_metrics_report_empty():
 
 def test_generate_metrics_report_all_success():
     metrics = [
-        ProcessingMetric(input_item=i, start_time=float(i), end_time=float(i) + 0.1, success=True)
+        ProcessingMetric(
+            input_item=i, start_time=float(i), end_time=float(i) + 0.1, success=True
+        )
         for i in range(5)
     ]
     report = generate_metrics_report(metrics)
@@ -299,7 +305,13 @@ def test_generate_metrics_report_all_success():
 def test_generate_metrics_report_with_failures():
     metrics = [
         ProcessingMetric(input_item=0, start_time=0.0, end_time=0.1, success=True),
-        ProcessingMetric(input_item=1, start_time=0.1, end_time=0.2, success=False, error_message="oops"),
+        ProcessingMetric(
+            input_item=1,
+            start_time=0.1,
+            end_time=0.2,
+            success=False,
+            error_message="oops",
+        ),
     ]
     report = generate_metrics_report(metrics)
     assert report["total_items"] == 2
@@ -324,8 +336,12 @@ def test_generate_metrics_report_outliers():
 
 def test_generate_metrics_report_time_range():
     metrics = [
-        ProcessingMetric(input_item=0, start_time=1000.0, end_time=1001.0, success=True),
-        ProcessingMetric(input_item=1, start_time=1002.0, end_time=1005.0, success=True),
+        ProcessingMetric(
+            input_item=0, start_time=1000.0, end_time=1001.0, success=True
+        ),
+        ProcessingMetric(
+            input_item=1, start_time=1002.0, end_time=1005.0, success=True
+        ),
     ]
     report = generate_metrics_report(metrics)
     assert report["total_elapsed"] == pytest.approx(5.0)  # 1005.0 - 1000.0
@@ -353,7 +369,13 @@ def test_generate_json_report_returns_valid_json():
 def test_generate_markdown_report_contains_summary():
     metrics = [
         ProcessingMetric(input_item=1, start_time=0.0, end_time=0.5, success=True),
-        ProcessingMetric(input_item=2, start_time=0.5, end_time=1.0, success=False, error_message="err"),
+        ProcessingMetric(
+            input_item=2,
+            start_time=0.5,
+            end_time=1.0,
+            success=False,
+            error_message="err",
+        ),
     ]
     result = generate_markdown_report(metrics)
     assert "# Processing Metrics Report" in result
@@ -410,7 +432,9 @@ def test_failed_metrics_stored_immediately(tmp_path):
             raise ItemError(f"bad {x}")
         return x * 2
 
-    snapper = Snapper(range(5), process, snapshot_storage=storage, skip_item_errors=True)
+    snapper = Snapper(
+        range(5), process, snapshot_storage=storage, skip_item_errors=True
+    )
     snapper.start()
 
     # store_metrics should have been called multiple times (once per failure + once per success batch)
@@ -442,7 +466,9 @@ def test_failed_items_not_retried_by_default(tmp_path):
     storage = _sqlite_storage(tmp_path)
 
     # First run: item 1 fails, items 0, 2 succeed
-    with Snapper(range(3), process, snapshot_storage=storage, skip_item_errors=True) as snapper1:
+    with Snapper(
+        range(3), process, snapshot_storage=storage, skip_item_errors=True
+    ) as snapper1:
         snapper1.start()
 
     # Second run with same iterable – item 1 should NOT be retried
@@ -471,7 +497,9 @@ def test_failed_items_retried_when_requested(tmp_path):
     storage = _sqlite_storage(tmp_path)
 
     # First run: item 1 fails
-    with Snapper(range(3), process, snapshot_storage=storage, skip_item_errors=True) as snapper1:
+    with Snapper(
+        range(3), process, snapshot_storage=storage, skip_item_errors=True
+    ) as snapper1:
         snapper1.start()
 
     # Second run with retry_failed_items=True – item 1 should be retried
@@ -528,7 +556,9 @@ def test_retry_failed_items_pickle_backend(tmp_path):
         return x * 2
 
     storage = _pickle_storage(tmp_path)
-    with Snapper(range(4), process, snapshot_storage=storage, skip_item_errors=True) as snapper1:
+    with Snapper(
+        range(4), process, snapshot_storage=storage, skip_item_errors=True
+    ) as snapper1:
         snapper1.start()
 
     def process2(x):
@@ -541,4 +571,3 @@ def test_retry_failed_items_pickle_backend(tmp_path):
         snapper2.start()
 
     assert 2 not in processed_second_run
-
